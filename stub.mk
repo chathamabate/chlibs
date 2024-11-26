@@ -1,25 +1,30 @@
 
-# This stub file is meant to be included
-# at the bottom of every library's make file.
-# 
-# It expects the follow defines:
-# 
-# LIB_NAME	:=
-# DEPS		:=
-# SRCS		:=
-# TEST_SRCS :=
-#
-# It also expects each library to have the following structure:
-#
-# src: just .c files.
-# include: just .h files.
-# test: .c and .h files for building test binary.
-#
-# Output will be placed in build.
-# Each library will have its own build folder.
-# Use the install target to copy build library and headers
+PROJ_DIR:=$(shell git rev-parse --show-toplevel)
 
-include ../vars.mk
+# NOTE: This Makefile is meant to be INVOKED.
+# A Library is supposed to be in a directory which shares its name.
+# It must have  src, include, and test folders.
+
+# REQUIRED
+LIB_NAME 	?=
+
+# REQUIRED
+DEPS 		?=
+
+# REQUIRED
+_SRCS		?=
+
+# REQUIRED
+_TEST_SRCS	?=
+
+# OPTIONALS
+CC			?=gcc
+INSTALL_DIR	?=$(PROJ_DIR)/install
+
+FLAGS:=-Wall -Wextra -Wpedantic -std=c11 -D_POSIX_C_SOURCE=200809L
+
+# Where to search for static libraries and header files
+# of other modules.
 
 # I like absolute paths tbh.
 LIB_DIR		:=$(PROJ_DIR)/$(LIB_NAME)
@@ -28,23 +33,24 @@ INCLUDE_DIR	:=$(LIB_DIR)/include
 SRC_DIR		:=$(LIB_DIR)/src
 TEST_DIR	:=$(LIB_DIR)/test
 
-BUILD_DIR		:=$(LIB_DIR)/build
+SRCS :=$(addprefix $(SRC_DIR)/,$(_SRCS))
+TEST_SRCS :=$(addprefix $(TEST_DIR)/,$(_TEST_SRCS))
+
+BUILD_DIR		:=$(PROJ_DIR)/build/$(LIB_NAME)
 BUILD_TEST_DIR	:=$(BUILD_DIR)/test
 
-LIB_FILE_NAME	:=lib$(LIB_NAME).a
-LIB_FILE		:=$(BUILD_DIR)/$(LIB_FILE_NAME)
+_LIB_FILE		:=lib$(LIB_NAME).a
+LIB_FILE		:=$(BUILD_DIR)/$(_LIB_FILE)
 
 # Each library will be built entirely independently to its
 # dependencies. It will search for libraries in the install path.
 
 HEADERS			:=$(wildcard $(INCLUDE_DIR)/$(LIB_NAME)/*.h)
 PRIVATE_HEADERS	:=$(wildcard $(SRC_DIR)/*.h)
-OBJS		:=$(patsubst %.c,%.o,$(SRCS))
-FULL_OBJS	:=$(addprefix $(BUILD_DIR)/,$(OBJS))
+OBJS			:=$(patsubst %.c,$(BUILD_DIR)/%.o,$(_SRCS))
 
 TEST_HEADERS	:=$(wildcard $(TEST_DIR)/*.h)
-TEST_OBJS		:=$(patsubst %.c,%.o,$(TEST_SRCS))
-FULL_TEST_OBJS	:=$(addprefix $(BUILD_TEST_DIR)/,$(TEST_OBJS))
+TEST_OBJS		:=$(patsubst %.c,$(BUILD_TEST_DIR)/%.o,$(_TEST_SRCS))
 
 # Headers accessible within the include directory.
 # Only really used for clangd generation.
