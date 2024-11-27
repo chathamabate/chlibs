@@ -72,7 +72,7 @@ TEST_INCLUDE_FLAGS :=$(addprefix -I,$(TEST_INCLUDE_PATHS))
 # Where to look for static library dependencies.
 # Again, it is important our local build is first.
 DEPS_PATHS 	:=$(BUILD_DIR) $(INSTALL_DIR)
-DEPS_FLAGS	:=$(addprefix -L,$(DEPS_PATHS)) $(foreach dep, $(DEPS),-l$(dep))
+DEPS_FLAGS	:=$(addprefix -L,$(DEPS_PATHS)) $(foreach dep, $(LIB_NAME) $(DEPS),-l$(dep))
 
 # New Targets....
 
@@ -106,7 +106,7 @@ $(TEST_OBJS): $(TEST_OBJS_DIR)/%.o: $(TEST_DIR)/%.c $(TEST_HEADERS) $(HEADERS) |
 .PHONY: test test.run
 test: $(TEST_EXEC)
 $(TEST_EXEC): $(TEST_OBJS) $(LIB_FILE) | $(BUILD_DIR)
-	$(CC) $(TEST_OBJS) $(DEPS_FLAGS) -lunity -l$(LIB_NAME) -o $@
+	$(CC) $(TEST_OBJS) $(DEPS_FLAGS) -lunity -o $@
 
 test.run: $(TEST_EXEC)
 	cd $(BUILD_DIR) && ./test
