@@ -36,6 +36,7 @@ help: logo
 	@echo "   $(TARGET_COLOR)test.run$(RESET_COLOR)          - Build and run all test executables"
 	@echo ""
 	@echo " Misc "
+	@echo "   $(TARGET_COLOR)help$(RESET_COLOR)              - Display this page"
 	@echo "   $(TARGET_COLOR)clangd$(RESET_COLOR)            - Build all Clangd files"
 	@echo "   $(TARGET_COLOR)clean$(RESET_COLOR)             - Delete build folder"
 	@echo "   $(TARGET_COLOR)clean.deep$(RESET_COLOR)        - Delete build and install folders"
