@@ -18,10 +18,10 @@ _SRCS		?=
 _TEST_SRCS	?=
 
 # OPTIONALS
-CC			?=gcc
 INSTALL_DIR	?=$(PROJ_DIR)/install
 BUILD_DIR	?=$(PROJ_DIR)/build/$(LIB_NAME)
 
+CC			:=gcc
 FLAGS:=-Wall -Wextra -Wpedantic -std=c11 -D_POSIX_C_SOURCE=200809L
 
 # Where to search for static libraries and header files
