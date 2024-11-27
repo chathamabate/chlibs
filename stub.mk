@@ -20,6 +20,7 @@ _TEST_SRCS	?=
 # OPTIONALS
 CC			?=gcc
 INSTALL_DIR	?=$(PROJ_DIR)/install
+BUILD_DIR	?=$(PROJ_DIR)/build/$(LIB_NAME)
 
 FLAGS:=-Wall -Wextra -Wpedantic -std=c11 -D_POSIX_C_SOURCE=200809L
 
@@ -28,6 +29,7 @@ FLAGS:=-Wall -Wextra -Wpedantic -std=c11 -D_POSIX_C_SOURCE=200809L
 
 # I like absolute paths tbh.
 LIB_DIR		:=$(PROJ_DIR)/$(LIB_NAME)
+INSTALL_INCLUDE_DIR := $(INSTALL_DIR)/include
 
 INCLUDE_DIR	:=$(LIB_DIR)/include
 SRC_DIR		:=$(LIB_DIR)/src
@@ -36,21 +38,23 @@ TEST_DIR	:=$(LIB_DIR)/test
 SRCS :=$(addprefix $(SRC_DIR)/,$(_SRCS))
 TEST_SRCS :=$(addprefix $(TEST_DIR)/,$(_TEST_SRCS))
 
-BUILD_DIR		:=$(PROJ_DIR)/build/$(LIB_NAME)
-BUILD_TEST_DIR	:=$(BUILD_DIR)/test
+OBJS_DIR	  := $(BUILD_DIR)/objs
+TEST_OBJS_DIR := $(BUILD_DIR)/test-objs
 
 _LIB_FILE		:=lib$(LIB_NAME).a
 LIB_FILE		:=$(BUILD_DIR)/$(_LIB_FILE)
+INSTALLED_LIB_FILE := $(INSTALL_DIR)/$(_LIB_FILE)
 
 # Each library will be built entirely independently to its
 # dependencies. It will search for libraries in the install path.
 
 HEADERS			:=$(wildcard $(INCLUDE_DIR)/$(LIB_NAME)/*.h)
 PRIVATE_HEADERS	:=$(wildcard $(SRC_DIR)/*.h)
-OBJS			:=$(patsubst %.c,$(BUILD_DIR)/%.o,$(_SRCS))
+OBJS			:=$(patsubst %.c,$(OBJS_DIR)/%.o,$(_SRCS))
 
 TEST_HEADERS	:=$(wildcard $(TEST_DIR)/*.h)
-TEST_OBJS		:=$(patsubst %.c,$(BUILD_TEST_DIR)/%.o,$(_TEST_SRCS))
+TEST_OBJS		:=$(patsubst %.c,$(TEST_OBJS_DIR)/%.o,$(_TEST_SRCS))
+TEST_EXEC		:=$(BUILD_DIR)/test
 
 # Headers accessible within the include directory.
 # Only really used for clangd generation.
@@ -68,43 +72,42 @@ TEST_INCLUDE_FLAGS :=$(addprefix -I,$(TEST_INCLUDE_PATHS))
 # Where to look for static library dependencies.
 # Again, it is important our local build is first.
 DEPS_PATHS 	:=$(BUILD_DIR) $(INSTALL_DIR)
-DEPS_FLAGS	:=$(addprefix -L,$(DEPS_PATHS)) $(foreach dep,$(DEPS),-l$(dep))
+DEPS_FLAGS	:=$(addprefix -L,$(DEPS_PATHS)) $(foreach dep, $(DEPS),-l$(dep))
 
-.PHONY: all lib test run_tests
-.PHONY: uninstall_headers install_headser uninstall_lib install_lib
-.PHONY: clean clangd clean_clangd
+# New Targets....
 
-all: lib test
-
-lib: $(LIB_FILE)
-
-test: $(BUILD_TEST_DIR)/test
-
-run_tests: test
-	$(BUILD_TEST_DIR)/test	
-
-$(INSTALL_DIR) $(INSTALL_DIR)/include:
+$(BUILD_DIR) $(OBJS_DIR) $(TEST_OBJS_DIR):
 	mkdir -p $@
 
-uninstall_headers:
-	rm -rf $(INSTALL_DIR)/include/$(LIB_NAME)
+$(OBJS): $(OBJS_DIR)/%.o: $(SRC_DIR)/%.c $(PRIVATE_HEADERS) $(HEADERS) | $(OBJS_DIR)
+	$(CC) $< -c -o $@ $(FLAGS) $(SRC_INCLUDE_FLAGS)
 
-install_headers: uninstall_headers | $(INSTALL_DIR)/include
-	cp -r $(INCLUDE_DIR)/$(LIB_NAME) $(INSTALL_DIR)/include
+$(LIB_FILE): $(OBJS)
+	ar rcs $@ $^
 
-uninstall_lib:
-	rm -f $(INSTALL_DIR)/$(LIB_FILE_NAME)
+.PHONY: lib lib.uninstall lib.install
+lib: $(LIB_FILE)
 
-install_lib: uninstall_lib $(LIB_FILE) | $(INSTALL_DIR)
-	cp $(LIB_FILE) $(INSTALL_DIR)
+lib.uninstall:
+	rm -f $(INSTALLED_LIB_FILE)
+lib.install: $(LIB_FILE)
+	cp $< $(INSTALLED_LIB_FILE)
 
-uninstall: uninstall_lib uninstall_headers
+.PHONY: headers.uninstall headers.install
+headers.uninstall:
+	rm -rf $(INSTALL_INCLUDE_DIR)/$(LIB_NAME)
+headers.install: headers.uninstall
+	cp -r $(INCLUDE_DIR)/$(LIB_NAME) $(INSTALL_INCLUDE_DIR)
 
-install: install_lib install_headers
+$(TEST_OBJS): $(TEST_OBJS_DIR)/%.o: $(TEST_DIR)/%.c $(TEST_HEADERS) $(HEADERS) | $(TEST_OBJS_DIR)
+	$(CC) $< -c -o $@ $(FLAGS) $(TEST_INCLUDE_FLAGS)
 
-clean:
-	rm -rf $(BUILD_DIR)
+.PHONY: test
+test: $(TEST_EXEC)
+$(TEST_EXEC): $(TEST_OBJS) $(LIB_FILE) | $(BUILD_DIR)
+	$(CC) $(TEST_OBJS) $(DEPS_FLAGS) -lunity -l$(LIB_NAME) -o $@
 
+.PHONY: clangd
 clangd:
 	cp $(PROJ_DIR)/clangd_template.yml $(INCLUDE_DIR)/.clangd
 	$(foreach flag,$(INCLUDE_INCLUDE_FLAGS),echo "    - $(flag)" >> $(INCLUDE_DIR)/.clangd;) 
@@ -113,25 +116,7 @@ clangd:
 	cp $(PROJ_DIR)/clangd_template.yml $(TEST_DIR)/.clangd
 	$(foreach flag,$(TEST_INCLUDE_FLAGS),echo "    - $(flag)" >> $(TEST_DIR)/.clangd;) 
 
-clean_clangd:
-	rm -f $(INCLUDE_DIR)/.clangd
-	rm -f $(SRC_DIR)/.clangd
-	rm -f $(TEST_DIR)/.clangd
-
-$(BUILD_DIR) $(BUILD_TEST_DIR):
-	mkdir -p $@
-
-$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c $(PRIVATE_HEADERS) $(HEADERS) | $(BUILD_DIR)
-	$(CC) -c $(FLAGS) $(SRC_INCLUDE_FLAGS) $< -o $@
-
-# Remember, the lib file doesn't actually care about dependencies.
-$(LIB_FILE): $(FULL_OBJS)
-	ar rcs $@ $^
-
-$(BUILD_TEST_DIR)/%.o: $(TEST_DIR)/%.c $(HEADERS) $(TEST_HEADERS) | $(BUILD_TEST_DIR)
-	$(CC) -c $(FLAGS) $(TEST_INCLUDE_FLAGS) $< -o $@
-
-# Always include unity!
-$(BUILD_TEST_DIR)/test: $(FULL_TEST_OBJS) $(LIB_FILE)
-	$(CC) $^ $(DEPS_FLAGS) -lunity -o $@
+.PHONY: clean
+clean:
+	rm -rf $(BUILD_DIR)
 
