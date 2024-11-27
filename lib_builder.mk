@@ -76,7 +76,7 @@ DEPS_FLAGS	:=$(addprefix -L,$(DEPS_PATHS)) $(foreach dep, $(DEPS),-l$(dep))
 
 # New Targets....
 
-$(BUILD_DIR) $(OBJS_DIR) $(TEST_OBJS_DIR):
+$(BUILD_DIR) $(OBJS_DIR) $(TEST_OBJS_DIR) $(INSTALL_DIR) $(INSTALL_INCLUDE_DIR):
 	mkdir -p $@
 
 $(OBJS): $(OBJS_DIR)/%.o: $(SRC_DIR)/%.c $(PRIVATE_HEADERS) $(HEADERS) | $(OBJS_DIR)
@@ -90,22 +90,26 @@ lib: $(LIB_FILE)
 
 lib.uninstall:
 	rm -f $(INSTALLED_LIB_FILE)
-lib.install: $(LIB_FILE)
+lib.install: $(LIB_FILE) | $(INSTALL_DIR)
+	mkdir -p $(INCLUDE_DIR)
 	cp $< $(INSTALLED_LIB_FILE)
 
 .PHONY: headers.uninstall headers.install
 headers.uninstall:
 	rm -rf $(INSTALL_INCLUDE_DIR)/$(LIB_NAME)
-headers.install: headers.uninstall
+headers.install: headers.uninstall | $(INSTALL_INCLUDE_DIR)
 	cp -r $(INCLUDE_DIR)/$(LIB_NAME) $(INSTALL_INCLUDE_DIR)
 
 $(TEST_OBJS): $(TEST_OBJS_DIR)/%.o: $(TEST_DIR)/%.c $(TEST_HEADERS) $(HEADERS) | $(TEST_OBJS_DIR)
 	$(CC) $< -c -o $@ $(FLAGS) $(TEST_INCLUDE_FLAGS)
 
-.PHONY: test
+.PHONY: test test.run
 test: $(TEST_EXEC)
 $(TEST_EXEC): $(TEST_OBJS) $(LIB_FILE) | $(BUILD_DIR)
 	$(CC) $(TEST_OBJS) $(DEPS_FLAGS) -lunity -l$(LIB_NAME) -o $@
+
+test.run: $(TEST_EXEC)
+	cd $(BUILD_DIR) && ./test
 
 .PHONY: clangd
 clangd:

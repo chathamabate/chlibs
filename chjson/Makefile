@@ -2,13 +2,13 @@
 LIB_NAME	:= chjson
 DEPS		:= chutil chsys
 
-SRCS		:= json.c \
+_SRCS		:= json.c \
 			   json_helpers.c \
 			   parser.c
 
-TEST_SRCS   := main.c \
+_TEST_SRCS   := main.c \
 			   json.c \
 			   json_helpers.c \
 			   parser.c
 
-include ../stub.mk
+include ../lib_builder_stub.mk
