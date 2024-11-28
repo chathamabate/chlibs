@@ -1,6 +1,6 @@
 
-#ifndef CHRPC_CHN_H
-#define CHRPC_CHN_H
+#ifndef CHRPC_CHANNEL_H
+#define CHRPC_CHANNEL_H
 
 #include <stdlib.h>
 
@@ -8,7 +8,8 @@ typedef enum _channel_status_t {
     CHN_SUCCESS = 0,
     CHN_INVALID_ARGS,
     CHN_BUFFER_TOO_SMALL,
-    CHN_NO_INCOMING_MSG
+    CHN_NO_INCOMING_MSG,
+    CHN_MEM_ERROR,
 } channel_status_t;
 
 #define TRY_CHANNEL_CALL(expr) \
@@ -63,6 +64,9 @@ typedef channel_status_t (*channel_incoming_len_ft)(void *chn, size_t *len);
 // enough for the incoming message. In this case, the incoming message should NOT
 // be lost! The user should be able to call receive again with an adequately sized
 // buffer to receive the initial buffer.
+//
+// NOTE: This can be implemented to block until a message is ready to be received.
+// Or, it can be implemented to return CHN_NO_INCOMING_MSG.
 typedef channel_status_t (*channel_receive_ft)(void *chn, void *buf, size_t len, size_t *readden); 
 
 typedef struct _channel_impl_t {
@@ -74,8 +78,6 @@ typedef struct _channel_impl_t {
     channel_incoming_len_ft incoming_len;
     channel_receive_ft      receive;
 } channel_impl_t;
-
-// You'll need
 
 typedef struct _channel_t {
     void *channel;
@@ -105,5 +107,14 @@ static inline channel_status_t chn_incoming_len(channel_t *chn, size_t *len) {
 static inline channel_status_t chn_receive(channel_t *chn, void *buf, size_t len, size_t *readden) {
     return chn->impl->receive(chn->channel, buf, len, readden);
 }
+
+// Helper message type. 
+//
+// NOTE: This does NOT need to be used by your implementation!
+
+typedef struct _channel_msg_t {
+    size_t msg_size;
+    void *msg_buf;
+} channel_msg_t;
 
 #endif

@@ -1,8 +1,10 @@
 
 LIB_NAME	:= chrpc
-DEPS		:= chsys
+DEPS		:= chsys \
+			   chutil
 
-_SRCS		:= channel.c
+_SRCS		:= channel.c \
+			   channel_local.c
 
 _TEST_SRCS   := main.c
 
