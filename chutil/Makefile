@@ -1,7 +1,7 @@
 
 LIB_NAME	:= chutil
 DEPS		:= chsys
-SRCS		:= list.c \
+_SRCS		:= list.c \
 			   list_helpers.c \
 			   map.c \
 			   heap.c \
@@ -9,7 +9,7 @@ SRCS		:= list.c \
 			   stream.c \
 			   utf8.c
 
-TEST_SRCS   := main.c \
+_TEST_SRCS   := main.c \
 			   list.c \
 			   list_helpers.c \
 			   map.c \
@@ -18,4 +18,5 @@ TEST_SRCS   := main.c \
 			   stream.c \
 			   utf8.c
 
-include ../stub.mk
+
+include ../lib_builder_stub.mk
