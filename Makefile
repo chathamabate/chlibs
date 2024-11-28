@@ -1,7 +1,7 @@
 
 PROJ_DIR	:=$(shell git rev-parse --show-toplevel)
 
-LIBS		:=chutil chjson chsys
+LIBS		:=chutil chjson chsys chrpc
 
 .PHONY:  logo help
 
