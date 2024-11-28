@@ -39,7 +39,7 @@ typedef struct _channel_local_t {
     list_t *queue;
 } channel_local_t;
 
-extern const channel_impl_t *CHANNEL_LOCAL_IMPL;
+extern const channel_impl_t * const CHANNEL_LOCAL_IMPL;
 
 // NOTE: The value pointed to by cfg can be destructed after this
 // call. Only the values inside the cfg object will be copied into

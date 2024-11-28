@@ -8,8 +8,10 @@ typedef enum _channel_status_t {
     CHN_SUCCESS = 0,
     CHN_INVALID_ARGS,
     CHN_BUFFER_TOO_SMALL,
+    CHN_INVALID_MSG_SIZE,
     CHN_NO_INCOMING_MSG,
     CHN_MEM_ERROR,
+    CHN_CHANNEL_FULL,
 } channel_status_t;
 
 #define TRY_CHANNEL_CALL(expr) \
