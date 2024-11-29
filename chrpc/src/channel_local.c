@@ -42,6 +42,12 @@ channel_status_t delete_channel_local(channel_local_t *chn_l) {
         return CHN_INVALID_ARGS;
     }
 
+    channel_msg_t *iter;
+    l_reset_iterator(chn_l->queue);
+    while ((iter = l_next(chn_l->queue))) {
+        safe_free(iter->msg_buf);
+    }
+
     delete_list(chn_l->queue);
     pthread_mutex_destroy(&(chn_l->mut));
     safe_free(chn_l);
