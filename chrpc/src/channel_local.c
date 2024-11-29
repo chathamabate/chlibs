@@ -50,20 +50,12 @@ channel_status_t delete_channel_local(channel_local_t *chn_l) {
 }
 
 channel_status_t chn_l_max_msg_size(channel_local_t *chn_l, size_t *mms) {
-    if (!chn_l || !mms) {
-        return CHN_INVALID_ARGS;
-    }
-
     *mms = chn_l->cfg.max_msg_size;
 
     return CHN_SUCCESS;
 }
 
 channel_status_t chn_l_send(channel_local_t *chn_l, const void *msg, size_t len) {
-    if (!chn_l || !msg) {
-        return CHN_INVALID_ARGS;
-    }
-
     if (len == 0 || len > chn_l->cfg.max_msg_size) {
         return CHN_INVALID_MSG_SIZE;
     }
@@ -83,8 +75,12 @@ channel_status_t chn_l_send(channel_local_t *chn_l, const void *msg, size_t len)
             goto end;
         }
 
+        channel_msg_t oldest_msg;
+
         // When write over is on, we just toss the oldest message.
-        l_poll(chn_l->queue, NULL);
+        l_poll(chn_l->queue, (void *)&oldest_msg);
+
+        safe_free(oldest_msg.msg_buf);
     }
 
     channel_msg_t local_msg = {
@@ -100,9 +96,7 @@ end:
 }
 
 channel_status_t chn_l_refresh(channel_local_t *chn_l) {
-    if (!chn_l) {
-        return CHN_INVALID_ARGS;
-    }
+    (void)chn_l;
 
     // Not needed for such a trivial channel.
 
@@ -110,10 +104,6 @@ channel_status_t chn_l_refresh(channel_local_t *chn_l) {
 }
 
 channel_status_t chn_l_incoming_len(channel_local_t *chn_l, size_t *len) {
-    if (!chn_l || !len) {
-        return CHN_INVALID_ARGS;
-    }
-
     channel_status_t return_status = CHN_SUCCESS;
 
     pthread_mutex_lock(&(chn_l->mut));
@@ -131,10 +121,6 @@ channel_status_t chn_l_incoming_len(channel_local_t *chn_l, size_t *len) {
 }
 
 channel_status_t chn_l_receive(channel_local_t *chn_l, void *buf, size_t len, size_t *readden) {
-    if (!chn_l || !buf || !readden) {
-        return CHN_INVALID_ARGS;
-    }
-
     channel_status_t return_status = CHN_SUCCESS;
 
     pthread_mutex_lock(&(chn_l->mut));
@@ -147,20 +133,23 @@ channel_status_t chn_l_receive(channel_local_t *chn_l, void *buf, size_t len, si
     }
 
     const channel_msg_t *msg = (const channel_msg_t *)l_get(chn_l->queue, 0);
-
     if (msg->msg_size > len) {
         return_status = CHN_BUFFER_TOO_SMALL;
         goto end;
     }
 
-    // Our buffer is big enough! we can perform the receive!
-    memcpy(buf, msg->msg_buf, msg->msg_size);
-    *readden = msg->msg_size;
+    // We have confirmed we can poll!
     
-    // Finally, poll!
-    l_poll(chn_l->queue, NULL);
+    channel_msg_t local_msg;
+    l_poll(chn_l->queue, &local_msg);
+
+    // Our buffer is big enough! we can perform the receive!
+    memcpy(buf, local_msg.msg_buf, local_msg.msg_size);
+    *readden = local_msg.msg_size;
+    
+    safe_free(local_msg.msg_buf);
 
 end:
     pthread_mutex_unlock(&(chn_l->mut));
-    return CHN_SUCCESS;
+    return return_status;
 }

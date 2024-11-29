@@ -71,6 +71,8 @@ typedef channel_status_t (*channel_incoming_len_ft)(void *chn, size_t *len);
 // Or, it can be implemented to return CHN_NO_INCOMING_MSG.
 typedef channel_status_t (*channel_receive_ft)(void *chn, void *buf, size_t len, size_t *readden); 
 
+// NOTE: None of the below functions given need to check arguments.
+// This will be checked by generic functions below.
 typedef struct _channel_impl_t {
     channel_constructor_ft  constructor;
     channel_destructor_ft   destructor;
@@ -91,22 +93,42 @@ channel_status_t new_channel(const channel_impl_t *impl,
 channel_status_t delete_channel(channel_t *chn);
 
 static inline channel_status_t chn_max_msg_size(channel_t *chn, size_t *mms) {
+    if (!chn || !mms) {
+        return CHN_INVALID_ARGS;
+    }
+
     return chn->impl->max_msg_size(chn->channel, mms);
 }
 
 static inline channel_status_t chn_send(channel_t *chn, const void *msg, size_t len) {
+    if (!chn || !msg) {
+        return CHN_INVALID_ARGS;
+    }
+
     return chn->impl->send(chn->channel, msg, len);
 }
 
 static inline channel_status_t chn_refresh(channel_t *chn) {
+    if (!chn) {
+        return CHN_INVALID_ARGS;
+    }
+
     return chn->impl->refresh(chn->channel);
 }
 
 static inline channel_status_t chn_incoming_len(channel_t *chn, size_t *len) {
+    if (!chn || !len) {
+        return CHN_INVALID_ARGS;
+    }
+
     return chn->impl->incoming_len(chn->channel, len);
 }
 
 static inline channel_status_t chn_receive(channel_t *chn, void *buf, size_t len, size_t *readden) {
+    if (!chn || !buf || !readden) {
+        return CHN_INVALID_ARGS;
+    }
+
     return chn->impl->receive(chn->channel, buf, len, readden);
 }
 
