@@ -19,6 +19,6 @@ int main(void) {
     sys_init();
 
     UNITY_BEGIN();
-    RUN_TEST(channel_local_tests);
+    channel_local_tests();
     safe_exit(UNITY_END());
 }
