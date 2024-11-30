@@ -20,7 +20,7 @@ const channel_impl_t * const CHANNEL_LOCAL_IMPL = &_CHANNEL_LOCAL_IMPL;
 
 channel_status_t new_channel_local(channel_local_t **chn_l, 
         const channel_local_config_t *cfg) {
-    if (!chn_l || !cfg) {
+    if (!cfg) {
         return CHN_INVALID_ARGS;
     }
 
@@ -38,10 +38,6 @@ channel_status_t new_channel_local(channel_local_t **chn_l,
 }
 
 channel_status_t delete_channel_local(channel_local_t *chn_l) {
-    if (!chn_l) {
-        return CHN_INVALID_ARGS;
-    }
-
     channel_msg_t *iter;
     l_reset_iterator(chn_l->queue);
     while ((iter = l_next(chn_l->queue))) {
