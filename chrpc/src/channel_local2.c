@@ -4,6 +4,18 @@
 #include "chrpc/channel_local.h"
 #include "chsys/mem.h"
 
+static const channel_impl_t _CHANNEL_LOCAL2_IMPL = {
+    .constructor = (channel_constructor_ft)new_channel_local,
+    .destructor = (channel_destructor_ft)delete_channel_local,
+    .max_msg_size = (channel_max_msg_size_ft)chn_l2_max_msg_size,
+    .send = (channel_send_ft)chn_l2_send,
+    .refresh = (channel_refresh_ft)chn_l2_refresh,
+    .incoming_len = (channel_incoming_len_ft)chn_l2_incoming_len,
+    .receive = (channel_receive_ft)chn_l2_receive
+};
+
+const channel_impl_t * const CHANNEL_LOCAL2_IMPL = &_CHANNEL_LOCAL2_IMPL;
+
 channel_status_t new_channel_local2_core(channel_local2_core_t **chn_l2_c, 
         const channel_local_config_t *cfg) {
     if (!chn_l2_c || !cfg) {

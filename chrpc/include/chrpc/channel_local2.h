@@ -26,6 +26,8 @@ typedef struct _channel_local2_t {
     channel_local2_core_t *core;
 } channel_local2_t;
 
+extern const channel_impl_t * const CHANNEL_LOCAL2_IMPL;
+
 // The information required to make the channel, and the channel's state
 // will have the same structure.
 // Calling new_channel_local2 will simply copy the core and direction
