@@ -14,6 +14,11 @@
 #include <stdbool.h>
 #include <unistd.h>
 
+// It'd be nice if there we some generic way we could make an echo thread???
+// There probably is a nice way tbh??
+// Maybe even a synchronous way??
+// Nah.....
+
 typedef struct _test_thread_arg_t {
     pthread_mutex_t mut;
     bool should_stop;

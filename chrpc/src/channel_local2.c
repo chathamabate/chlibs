@@ -49,6 +49,10 @@ channel_status_t new_channel_local2_core(channel_local2_core_t **chn_l2_c,
 }
 
 channel_status_t delete_channel_local2_core(channel_local2_core_t *chn_l2_c) {
+    if (!chn_l2_c) {
+        return CHN_INVALID_ARGS;
+    }
+
     channel_status_t s1, s2;
 
     s1 = delete_channel_local(chn_l2_c->a2b);
