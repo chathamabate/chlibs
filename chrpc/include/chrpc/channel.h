@@ -12,6 +12,7 @@ typedef enum _channel_status_t {
     CHN_NO_INCOMING_MSG,
     CHN_MEM_ERROR,
     CHN_CHANNEL_FULL,
+    CHN_UNKNOWN_ERROR
 } channel_status_t;
 
 #define TRY_CHANNEL_CALL(expr) \

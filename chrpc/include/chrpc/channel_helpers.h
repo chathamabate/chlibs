@@ -8,6 +8,7 @@
 #include <stdbool.h>
 
 typedef struct _channel_echo_thread_t {
+    // NOTE: this mutex is just for the should_stop field.
     pthread_mutex_t mut;
     bool should_stop;
 

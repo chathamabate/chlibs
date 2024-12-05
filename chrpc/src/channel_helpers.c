@@ -3,62 +3,57 @@
 
 #include "chrpc/channel.h"
 #include "chrpc/channel_helpers.h"
+#include <stdint.h>
 #include <pthread.h>
 #include <unistd.h>
 
-static void *channel_echo_thread_loop(void *_arg) {
-    // TODO: REWRITE THIS FUNCTION...
-    channel_echo_thread_t *arg = (channel_echo_thread_t *)_arg;
+static channel_status_t _channel_echo_thread_loop(channel_echo_thread_t *et, void *buf, size_t buf_len) {
+    size_t readden;
+    channel_status_t status;
 
+    while (!chn_et_should_stop(et)) {
+        TRY_CHANNEL_CALL(chn_refresh(et->chn));
+        
+        status = chn_incoming_len(et->chn, &readden);
+        if (status == CHN_NO_INCOMING_MSG) {
+            usleep(100);
+            continue;
+        }
+
+        // Some unexpected error.
+        if (status != CHN_SUCCESS) {
+            return status;
+        }
+
+        // Should never happen, but still just to be safe.
+        if (readden > buf_len) {
+            return CHN_BUFFER_TOO_SMALL;
+        }
+
+        TRY_CHANNEL_CALL(chn_receive(et->chn, buf, buf_len, &readden));
+
+        // Finally, echo back.
+        TRY_CHANNEL_CALL(chn_send(et->chn, buf, readden));
+    }
+
+    return CHN_SUCCESS;
+}
+
+static void *channel_echo_thread_loop(void *arg) {
+    channel_echo_thread_t *et = (channel_echo_thread_t *)arg;
     channel_status_t status;
 
     size_t mms;
-    status = chn_max_msg_size(arg->chn, &mms);
+    status = chn_max_msg_size(et->chn, &mms);
     if (status != CHN_SUCCESS) {
-        pthread_exit((void *)status);
+        return (void *)status;
     }
 
     void *buf = safe_malloc(mms * sizeof(uint8_t));
-
-    bool should_stop;
-    size_t readden;
-
-    while (true) {
-        pthread_mutex_lock(&(arg->mut));
-        should_stop = arg->should_stop;
-        pthread_mutex_unlock(&(arg->mut));
-
-        if (should_stop) {
-            status = CHN_SUCCESS;
-            break;
-        }
-
-        status = chn_receive(arg->chn, buf, mms, &readden);
-
-        if (status == CHN_SUCCESS) {
-            // echo time!
-            status = chn_send(arg->chn, buf, readden);
-            if (status != CHN_SUCCESS) {
-                break;
-            }
-        } else if (status == CHN_NO_INCOMING_MSG) {
-            // Time to sleep and refresh!
-            usleep(50);
-            status = chn_refresh(arg->chn);
-            if (status != CHN_SUCCESS) {
-                break;
-            }
-        } else {
-            // Return unexpected receive error.
-            break;
-        }
-    }
-
+    status = _channel_echo_thread_loop(et, buf, mms);
     safe_free(buf);
-    pthread_exit((void *)status);
 
-    // Should never make it here.
-    return NULL;
+    return (void *)status;
 }
 
 channel_echo_thread_t *new_channel_echo_thread(channel_t *chn) {
@@ -84,5 +79,18 @@ channel_echo_thread_t *new_channel_echo_thread(channel_t *chn) {
 }
 
 channel_status_t delete_channel_echo_thread(channel_echo_thread_t *chn_et) {
-    return CHN_MEM_ERROR;
+    chn_et_stop(chn_et); 
+
+    channel_status_t exit_status;
+    int thread_error = pthread_join(chn_et->thread, (void **)&exit_status);
+
+    // Now, regardless of the join status, let's just free all memory used.
+    pthread_mutex_destroy(&(chn_et->mut));
+    safe_free(chn_et);
+
+    if (thread_error != 0) {
+        return CHN_UNKNOWN_ERROR;
+    }
+
+    return exit_status;
 }
