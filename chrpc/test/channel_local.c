@@ -81,8 +81,8 @@ static void test_channel_local_write_over(void) {
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
             chn_send(chn, msgs[1], msg_lens[1]));
 
-    expect_chn_receive(chn, msgs[0], msg_lens[0], 100, 5);
-    expect_chn_receive(chn, msgs[1], msg_lens[1], 100, 5);
+    expect_chn_receive(chn, msgs[0], msg_lens[0], 5);
+    expect_chn_receive(chn, msgs[1], msg_lens[1], 5);
 
     // Now write all the messages.
     for (size_t i = 0; i < num_msgs; i++)  {
@@ -92,7 +92,7 @@ static void test_channel_local_write_over(void) {
 
     for (size_t i = 0; i < cfg.queue_depth; i++) {
         size_t exp_msg_index = num_msgs - cfg.queue_depth + i;
-        expect_chn_receive(chn, msgs[exp_msg_index], msg_lens[exp_msg_index], 100, 5);
+        expect_chn_receive(chn, msgs[exp_msg_index], msg_lens[exp_msg_index], 5);
     }
 
     size_t dummy_len;
@@ -126,7 +126,7 @@ static void test_channel_local_no_write_over(void) {
             chn_send(chn, "BBB", 4));
 
     for (size_t i = 0; i < cfg.queue_depth; i++) {
-        expect_chn_receive(chn, msg, msg_len, 100, 5);
+        expect_chn_receive(chn, msg, msg_len, 5);
     }
 
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 

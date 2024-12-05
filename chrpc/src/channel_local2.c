@@ -57,6 +57,7 @@ channel_status_t delete_channel_local2_core(channel_local2_core_t *chn_l2_c) {
 
     s1 = delete_channel_local(chn_l2_c->a2b);
     s2 = delete_channel_local(chn_l2_c->b2a);
+    safe_free(chn_l2_c);
 
     if (s1 != CHN_SUCCESS) {
         return s1;

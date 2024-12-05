@@ -1,5 +1,5 @@
 
-#include <stdio.h>
+#include "channel_local2.h"
 #include "chsys/sys.h"
 
 #include "unity/unity.h"
@@ -20,5 +20,6 @@ int main(void) {
 
     UNITY_BEGIN();
     channel_local_tests();
+    channel_local2_tests();
     safe_exit(UNITY_END());
 }

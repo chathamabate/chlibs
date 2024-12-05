@@ -3,20 +3,31 @@
 
 #include "chrpc/channel.h"
 #include "chrpc/channel_helpers.h"
+
 #include <stdint.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <time.h>
+#include <stdio.h>
 
 static channel_status_t _channel_echo_thread_loop(channel_echo_thread_t *et, void *buf, size_t buf_len) {
     size_t readden;
     channel_status_t status;
+
+    const struct timespec slp_amt = {
+        .tv_sec = 0,
+        .tv_nsec = 10000000 // Should be 10 ms
+    };
+
+    // Somewhat unused.
+    struct timespec rem;
 
     while (!chn_et_should_stop(et)) {
         TRY_CHANNEL_CALL(chn_refresh(et->chn));
         
         status = chn_incoming_len(et->chn, &readden);
         if (status == CHN_NO_INCOMING_MSG) {
-            usleep(100);
+            nanosleep(&slp_amt, &rem);
             continue;
         }
 
@@ -59,8 +70,6 @@ static void *channel_echo_thread_loop(void *arg) {
 channel_echo_thread_t *new_channel_echo_thread(channel_t *chn) {
     channel_echo_thread_t *et = 
         (channel_echo_thread_t *)safe_malloc(sizeof(channel_echo_thread_t));
-    // Maybe the buffer can be in here also???
-    // might be worthwhile just saying...
 
     pthread_mutex_init(&(et->mut), NULL);
     et->should_stop = false;

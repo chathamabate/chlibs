@@ -7,7 +7,7 @@
 
 // Helper for when a message is expected to be received.
 void expect_chn_receive(channel_t *chn, const void *exp, size_t exp_len, 
-        uint32_t wait_amt, uint32_t trials);
+        uint32_t trials);
 
 // This function will run a series of tests on the given channel.
 //
