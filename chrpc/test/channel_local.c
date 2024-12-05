@@ -22,7 +22,7 @@ static void test_channel_local_echo(void) {
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
             new_channel(CHANNEL_LOCAL_IMPL, &chn, (void *)&cfg));
 
-    test_chn_echo(chn, 100, 5); 
+    test_chn_echo(chn, 5); 
 
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
             delete_channel(chn));
@@ -40,7 +40,7 @@ static void test_channel_local_stressful_echo(void) {
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
             new_channel(CHANNEL_LOCAL_IMPL, &chn, (void *)&cfg));
 
-    test_chn_stressful_echo(chn, 100, 5);
+    test_chn_stressful_echo(chn, 5);
 
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
             delete_channel(chn));

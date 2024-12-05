@@ -59,13 +59,13 @@ void expect_chn_receive(channel_t *chn, const void *exp_buf, size_t exp_len, uin
 }
 
 static void test_chn_echo_single(channel_t *chn, const void *buf, size_t buf_len, 
-        uint32_t wait_amt, uint32_t tries) {
+        uint32_t tries) {
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, chn_send(chn, buf, buf_len));
     expect_chn_receive(chn, buf, buf_len, tries);
 }
 
 static void test_chn_echo_gen_single(channel_t *chn, size_t len, 
-        uint32_t wait_amt, uint32_t tries) {
+        uint32_t tries) {
     size_t mms; 
 
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
@@ -81,30 +81,30 @@ static void test_chn_echo_gen_single(channel_t *chn, size_t len,
         buf[i] = (uint8_t)i;
     }
 
-    test_chn_echo_single(chn, buf, len, wait_amt, tries);
+    test_chn_echo_single(chn, buf, len, tries);
 
     safe_free(buf);
 }
 
 
 // This should do a series of back and forths.
-void test_chn_echo(channel_t *chn, uint32_t wait_amt, uint32_t tries) {
-    test_chn_echo_gen_single(chn, 1, wait_amt, tries);
-    test_chn_echo_gen_single(chn, 25, wait_amt, tries);
-    test_chn_echo_gen_single(chn, 16, wait_amt, tries);
-    test_chn_echo_gen_single(chn, 200, wait_amt, tries);
-    test_chn_echo_gen_single(chn, 256, wait_amt, tries);
+void test_chn_echo(channel_t *chn, uint32_t tries) {
+    test_chn_echo_gen_single(chn, 1, tries);
+    test_chn_echo_gen_single(chn, 25, tries);
+    test_chn_echo_gen_single(chn, 16, tries);
+    test_chn_echo_gen_single(chn, 200, tries);
+    test_chn_echo_gen_single(chn, 256, tries);
 
     size_t mms;
     TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
             chn_max_msg_size(chn, &mms));
 
-    test_chn_echo_gen_single(chn, mms - 16, wait_amt, tries);
-    test_chn_echo_gen_single(chn, mms - 1, wait_amt, tries);
-    test_chn_echo_gen_single(chn, mms, wait_amt, tries);
+    test_chn_echo_gen_single(chn, mms - 16, tries);
+    test_chn_echo_gen_single(chn, mms - 1, tries);
+    test_chn_echo_gen_single(chn, mms, tries);
 }
 
-void test_chn_stressful_echo(channel_t *chn, uint32_t wait_amt, uint32_t tries) {
+void test_chn_stressful_echo(channel_t *chn, uint32_t tries) {
     const size_t TRIALS = 20;
 
     size_t mms;
@@ -119,7 +119,7 @@ void test_chn_stressful_echo(channel_t *chn, uint32_t wait_amt, uint32_t tries) 
     }
 
     for (size_t i = 0; i < TRIALS; i++) {
-        test_chn_echo_single(chn, buf, mms, wait_amt, tries);
+        test_chn_echo_single(chn, buf, mms, tries);
     }
 
     safe_free(buf);

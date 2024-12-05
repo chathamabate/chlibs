@@ -3,10 +3,11 @@
 #include "chrpc/channel.h"
 #include "chrpc/channel_local.h"
 #include "chsys/mem.h"
+#include <stdio.h>
 
 static const channel_impl_t _CHANNEL_LOCAL2_IMPL = {
-    .constructor = (channel_constructor_ft)new_channel_local,
-    .destructor = (channel_destructor_ft)delete_channel_local,
+    .constructor = (channel_constructor_ft)new_channel_local2,
+    .destructor = (channel_destructor_ft)delete_channel_local2,
     .max_msg_size = (channel_max_msg_size_ft)chn_l2_max_msg_size,
     .send = (channel_send_ft)chn_l2_send,
     .refresh = (channel_refresh_ft)chn_l2_refresh,
