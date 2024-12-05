@@ -64,7 +64,9 @@ static void *channel_echo_thread_loop(void *arg) {
     status = _channel_echo_thread_loop(et, buf, mms);
     safe_free(buf);
 
-    return (void *)status;
+    et->loop_final_status = status;
+
+    return NULL;
 }
 
 channel_echo_thread_t *new_channel_echo_thread(channel_t *chn) {
@@ -90,8 +92,8 @@ channel_echo_thread_t *new_channel_echo_thread(channel_t *chn) {
 channel_status_t delete_channel_echo_thread(channel_echo_thread_t *chn_et) {
     chn_et_stop(chn_et); 
 
-    channel_status_t exit_status;
-    int thread_error = pthread_join(chn_et->thread, (void **)&exit_status);
+    int thread_error = pthread_join(chn_et->thread, NULL);
+    channel_status_t final_status = chn_et->loop_final_status;
 
     // Now, regardless of the join status, let's just free all memory used.
     pthread_mutex_destroy(&(chn_et->mut));
@@ -101,5 +103,5 @@ channel_status_t delete_channel_echo_thread(channel_echo_thread_t *chn_et) {
         return CHN_UNKNOWN_ERROR;
     }
 
-    return exit_status;
+    return final_status;
 }

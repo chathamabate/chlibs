@@ -62,6 +62,7 @@ static void test_channel_local2_echo(void) {
     new_channel_local2_pipe(&core, &a2b, &b2a);
     
     et = new_channel_echo_thread(b2a);
+    TEST_ASSERT_NOT_NULL(et);
 
     test_chn_echo(a2b, 5);
 
@@ -80,6 +81,7 @@ static void test_channel_local2_stressful_echo(void) {
     new_channel_local2_pipe(&core, &a2b, &b2a);
     
     et = new_channel_echo_thread(b2a);
+    TEST_ASSERT_NOT_NULL(et);
 
     test_chn_stressful_echo(a2b, 5);
 

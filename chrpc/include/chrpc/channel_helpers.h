@@ -14,6 +14,10 @@ typedef struct _channel_echo_thread_t {
 
     pthread_t thread;
     channel_t *chn;
+
+    // After the echo thread has been joined, this field will
+    // hold the final channel status error code.
+    channel_status_t loop_final_status;
 } channel_echo_thread_t;
 
 // NOTE: Unlike many other functions in this library,
