@@ -64,6 +64,8 @@ static void *channel_echo_thread_loop(void *_arg) {
 channel_echo_thread_t *new_channel_echo_thread(channel_t *chn) {
     channel_echo_thread_t *et = 
         (channel_echo_thread_t *)safe_malloc(sizeof(channel_echo_thread_t));
+    // Maybe the buffer can be in here also???
+    // might be worthwhile just saying...
 
     pthread_mutex_init(&(et->mut), NULL);
     et->should_stop = false;
