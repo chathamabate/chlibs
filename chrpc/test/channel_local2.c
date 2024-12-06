@@ -91,7 +91,6 @@ static void test_channel_local2_stressful_echo(void) {
     delete_channel_local2_pipe(core, a2b, b2a);
 }
 
-
 void channel_local2_tests(void) {
     RUN_TEST(test_channel_local2_echo);
     RUN_TEST(test_channel_local2_stressful_echo);
