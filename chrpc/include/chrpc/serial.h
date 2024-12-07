@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Type Grammar:
 // PRIM ::= BYTE | INT | UINT | STRING
@@ -33,22 +34,22 @@ typedef enum _chrpc_status_t {
     CHRPC_BUFFER_TOO_SMALL,
 } chrpc_status_t;
 
-typedef enum _chrpc_type_id_t {
-    CHRPC_BYTE_TID = 0,
+// chrpc_type_id_t's will themselves be serialized. I will
+// not be defining them as an enum, since the sizing of enums can be kinda
+// confusing.
 
-    CHRPC_INT16_TID,
-    CHRPC_INT32_TID,
-    CHRPC_INT64_TID,
+typedef uint8_t chrpc_type_id_t;
 
-    CHRPC_UINT16_TID,
-    CHRPC_UINT32_TID,
-    CHRPC_UINT64_TID,
-
-    CHRPC_STRING_TID, 
-
-    CHRPC_STRUCT_TID,
-    CHRPC_ARRAY_TID,
-} chrpc_type_id_t;
+#define CHRPC_BYTE_TID 0
+#define CHRPC_INT16_TID 1
+#define CHRPC_INT32_TID 2
+#define CHRPC_INT64_TID 3
+#define CHRPC_UINT16_TID 4
+#define CHRPC_UINT32_TID 5
+#define CHRPC_UINT64_TID 6
+#define CHRPC_STRING_TID 7
+#define CHRPC_STRUCT_TID 8
+#define CHRPC_ARRAY_TID 9
 
 // This relies on primite type IDs being defined consecutively.
 static inline bool chrpc_type_id_is_primitive(chrpc_type_id_t tid) {

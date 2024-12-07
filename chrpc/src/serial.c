@@ -107,6 +107,14 @@ void delete_chrpc_type(chrpc_type_t *ct) {
 }
 
 chrpc_status_t chrpc_type_to_buffer(chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written) {
+    if (chrpc_type_is_primitive(ct)) {
+        if (buf_len == 0) {
+            return CHRPC_BUFFER_TOO_SMALL; 
+        } 
+
+        buf[0] =ct->type_id;
+    }
+
     return CHRPC_SUCCESS;
 }
 
