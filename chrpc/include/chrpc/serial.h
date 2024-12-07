@@ -114,6 +114,9 @@ chrpc_type_t *_new_chrpc_struct_type(int dummy,...);
 
 void delete_chrpc_type(chrpc_type_t *ct);
 
+// I'm deciding to use buffer directly here instead of the stream types 
+// found in chutil. (Really just because the channel interface uses buffers)
+
 chrpc_status_t chrpc_type_to_buffer(chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written);
 chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t **ct, size_t *readden);
 
