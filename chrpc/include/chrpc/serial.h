@@ -22,21 +22,17 @@
 //
 // NOTE: ALL MULTI BYTE NUMBERIC VALUES ARE LITTLE ENDIAN!
 
+// I will manually define many of these constant numeric values because
+// they may be serialized themselves. Sizing is kinda funky with C enum types.
+
 // A collection of status codes used across this library.
-typedef enum _chrpc_status_t {
-    CHRPC_SUCCESS = 0,
-    CHRPC_SYNTAX_ERROR,
+typedef uint8_t chrpc_status_t;
 
-    // Returned when the buffer ends before a parse is complete.
-    CHRPC_UNEXPECTED_END,
-
-    // Returned if the given buffer isn't large enough.
-    CHRPC_BUFFER_TOO_SMALL,
-} chrpc_status_t;
-
-// chrpc_type_id_t's will themselves be serialized. I will
-// not be defining them as an enum, since the sizing of enums can be kinda
-// confusing.
+#define CHRPC_SUCCESS 0
+#define CHRPC_SYNTAX_ERROR 1
+#define CHRPC_UNEXPECTED_END 2
+#define CHRPC_BUFFER_TOO_SMALL 3
+#define CHRPC_EMPTY_STRUCT_TYPE 4
 
 typedef uint8_t chrpc_type_id_t;
 
@@ -96,6 +92,9 @@ extern chrpc_type_t * const CHRPC_UINT16_T;
 extern chrpc_type_t * const CHRPC_UINT32_T;
 extern chrpc_type_t * const CHRPC_UINT64_T;
 extern chrpc_type_t * const CHRPC_STRING_T; 
+
+// Returns NULL if given type ID is not primitive.
+chrpc_type_t *chrpc_primitive_type_from_id(chrpc_type_id_t tid);
 
 
 // NOTE: Just like with the JSON library, these args for the composite types
