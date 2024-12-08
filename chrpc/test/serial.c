@@ -48,11 +48,13 @@ static void test_chrpc_type_new_and_delete(void) {
 }
 
 static void test_chrpc_type_equals(void) {
-    struct {
+    typedef struct {
         chrpc_type_t *ct1;
         chrpc_type_t *ct2;
         bool should_equate;
-    } cases[] = {
+    } test_case_t;
+
+    test_case_t cases[] = {
         {
             .ct1 = CHRPC_STRING_T,
             .ct2 = CHRPC_STRING_T,
@@ -118,42 +120,45 @@ static void test_chrpc_type_equals(void) {
     }
 }
 
-static void test_chrpc_type_to_buffer_successes(void) {
-    struct {
-        uint8_t exp[TEST_CHRPC_TEST_BUFFER_LEN];
-        size_t exp_len;
+static void test_chrpc_type_to_and_from_buffer(void) {
+    typedef struct {
+        uint8_t serial[TEST_CHRPC_TEST_BUFFER_LEN];
+        size_t serial_len;
+
         chrpc_type_t *ct;
-    } cases[] = {
+    } test_case_t;
+
+    test_case_t cases[] = {
         {
-            .exp = {
+            .serial = {
                 CHRPC_BYTE_TID
             },
-            .exp_len = 1,
+            .serial_len = 1,
             .ct = CHRPC_BYTE_T
         },
         {
-            .exp = {
+            .serial = {
                 CHRPC_ARRAY_TID,
                 CHRPC_INT16_TID
             },
-            .exp_len = 2,
+            .serial_len = 2,
             .ct = new_chrpc_array_type(CHRPC_INT16_T)
         },
         {
-            .exp = {
+            .serial = {
                 CHRPC_STRUCT_TID,
                 2,
                 CHRPC_BYTE_TID,
                 CHRPC_STRING_TID
             },
-            .exp_len = 4,
+            .serial_len = 4,
             .ct = new_chrpc_struct_type(
                 CHRPC_BYTE_T,
                 CHRPC_STRING_T
             )
         },
         {
-            .exp = {
+            .serial = {
                 CHRPC_STRUCT_TID,
                 2,
                 CHRPC_STRING_TID,
@@ -163,7 +168,7 @@ static void test_chrpc_type_to_buffer_successes(void) {
                 CHRPC_ARRAY_TID,
                 CHRPC_STRING_TID
             },
-            .exp_len = 8,
+            .serial_len = 8,
             .ct = new_chrpc_struct_type(
                 CHRPC_STRING_T, 
                 new_chrpc_struct_type(
@@ -173,7 +178,7 @@ static void test_chrpc_type_to_buffer_successes(void) {
             )
         },
         {
-            .exp = {
+            .serial = {
                 CHRPC_STRUCT_TID,
                 3,
                 CHRPC_UINT32_TID,
@@ -184,7 +189,7 @@ static void test_chrpc_type_to_buffer_successes(void) {
                 CHRPC_STRING_TID,
                 CHRPC_UINT32_TID
             },
-            .exp_len = 9,
+            .serial_len = 9,
             .ct = new_chrpc_struct_type(
                 CHRPC_UINT32_T,
                 new_chrpc_array_type(
@@ -195,18 +200,31 @@ static void test_chrpc_type_to_buffer_successes(void) {
                 ),
                 CHRPC_UINT32_T
             )
-        }
+        },
     };
 
     const size_t num_cases = sizeof(cases) / sizeof(cases[0]);
 
-    uint8_t act[TEST_CHRPC_TEST_BUFFER_LEN];
+    uint8_t temp_buf[TEST_CHRPC_TEST_BUFFER_LEN];
     for (size_t i = 0; i < num_cases; i++) {
+        test_case_t c = cases[i];
+
+        // First test to_buffer.
         size_t written = 0;
         TEST_ASSERT_EQUAL_INT(CHRPC_SUCCESS, 
-                chrpc_type_to_buffer(cases[i].ct, act, TEST_CHRPC_TEST_BUFFER_LEN, &written));
-        TEST_ASSERT_EQUAL_size_t(cases[i].exp_len, written);
-        TEST_ASSERT_EQUAL_UINT8_ARRAY(cases[i].exp, act, written);
+                chrpc_type_to_buffer(c.ct, temp_buf, TEST_CHRPC_TEST_BUFFER_LEN, &written));
+        TEST_ASSERT_EQUAL_size_t(c.serial_len, written);
+        TEST_ASSERT_EQUAL_UINT8_ARRAY(c.serial, temp_buf, written);
+
+        // Now test from buffer.
+        chrpc_type_t *ct;
+        size_t readden;
+        TEST_ASSERT_EQUAL_INT(CHRPC_SUCCESS, 
+                chrpc_type_from_buffer(c.serial, c.serial_len, &ct, &readden));
+        TEST_ASSERT_EQUAL_size_t(c.serial_len, readden);
+        TEST_ASSERT_TRUE(chrpc_type_equals(c.ct, ct));
+        
+        delete_chrpc_type(ct);
     }
 
     // Clean up all created test types.
@@ -242,48 +260,86 @@ static void test_chrpc_type_to_buffer_failures(void) {
     delete_chrpc_type(ct);
 }
 
-// NOTE: consider just redoing these tests tbh....
-// Shouldn't need a to and a from tbh...
 
-static void test_chrpc_type_from_buffer_successes(void)  {
-    /*
-    struct {
-        uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
-        size_t act_len;
-        chrpc_type_t *exp_type;
-    } cases[] = {
+static void test_chrpc_type_from_buffer_failures(void)  {
+    typedef struct {
+        uint8_t buf[TEST_CHRPC_TEST_BUFFER_LEN];
+        size_t buf_len;
+        chrpc_status_t exp_error;
+    } test_case_t;
 
+    test_case_t cases[] = {
+        {
+            .buf = {
+                0
+            },
+            .buf_len = 0,
+            .exp_error = CHRPC_UNEXPECTED_END
+        },
+        {
+            .buf = {
+                255 // This test depends on 255 being an unused ID value.
+            },
+            .buf_len = 1,
+            .exp_error = CHRPC_SYNTAX_ERROR
+        },
+        {
+            .buf = {
+                CHRPC_ARRAY_TID
+            },
+            .buf_len = 1,
+            .exp_error = CHRPC_UNEXPECTED_END
+        },
+        {
+            .buf = {
+                CHRPC_STRUCT_TID,
+                0
+            },
+            .buf_len = 2,
+            .exp_error = CHRPC_EMPTY_STRUCT_TYPE
+        },
+        {
+            .buf = {
+                CHRPC_STRUCT_TID,
+                2,
+                CHRPC_BYTE_TID
+            },
+            .buf_len = 3,
+            .exp_error = CHRPC_UNEXPECTED_END
+        },
+        {
+            .buf = {
+                CHRPC_STRUCT_TID,
+                2,
+                CHRPC_STRUCT_TID,
+                3,
+                CHRPC_BYTE_TID,
+                CHRPC_ARRAY_TID,
+                CHRPC_STRING_TID
+            },
+            .buf_len = 7,
+            .exp_error = CHRPC_UNEXPECTED_END
+        }
     };
+
     size_t num_cases = sizeof(cases) / sizeof(cases[0]);
 
     for (size_t i = 0; i < num_cases; i++) {
+        test_case_t c = cases[i];
+
+        // dummies.
+        chrpc_type_t *ct;
         size_t readden;
-        chrpc_type_t *act_type;
-        TEST_ASSERT_EQUAL_INT(CHRPC_SUCCESS, 
-                chrpc_type_from_buffer(cases[i].act_buf, cases[i].act_len, 
-                    &act_type, &readden));
-        TEST_ASSERT_EQUAL_size_t(cases[i].act_len, readden);
-        TEST_ASSERT_TRUE(chrpc_type_equals(cases[i].exp_type, act_type));
-        
-        delete_chrpc_type(act_type);
+
+        TEST_ASSERT_EQUAL_INT(c.exp_error, 
+                chrpc_type_from_buffer(c.buf, c.buf_len, &ct, &readden));
     }
-
-    // Cleanup.
-    for (size_t i = 0; i < num_cases; i++) {
-        delete_chrpc_type(cases[i].exp_type);
-    }
-    */
-}
-
-static void test_chrpc_type_from_buffer_failures(void)  {
-
 }
 
 void chrpc_serial_tests(void) {
     RUN_TEST(test_chrpc_type_new_and_delete);
     RUN_TEST(test_chrpc_type_equals);
-    RUN_TEST(test_chrpc_type_to_buffer_successes);
+    RUN_TEST(test_chrpc_type_to_and_from_buffer);
     RUN_TEST(test_chrpc_type_to_buffer_failures);
-    RUN_TEST(test_chrpc_type_from_buffer_successes);
     RUN_TEST(test_chrpc_type_from_buffer_failures);
 }
