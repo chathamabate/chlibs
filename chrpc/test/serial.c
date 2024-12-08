@@ -8,7 +8,7 @@
 
 #define TEST_CHRPC_TEST_BUFFER_LEN 256
 
-static void test_chrpc_new_and_delete(void) {
+static void test_chrpc_type_new_and_delete(void) {
     chrpc_type_t *ct;
 
     ct = new_chrpc_primitive_type_from_id(CHRPC_INT32_TID);
@@ -47,7 +47,78 @@ static void test_chrpc_new_and_delete(void) {
     delete_chrpc_type(ct);
 }
 
-static void test_chrpc_to_buffer_successes(void) {
+static void test_chrpc_type_equals(void) {
+    struct {
+        chrpc_type_t *ct1;
+        chrpc_type_t *ct2;
+        bool should_equate;
+    } cases[] = {
+        {
+            .ct1 = CHRPC_STRING_T,
+            .ct2 = CHRPC_STRING_T,
+            .should_equate = true
+        },
+        {
+            .ct1 = CHRPC_UINT16_T,
+            .ct2 = CHRPC_STRING_T,
+            .should_equate = false 
+        },
+        {
+            .ct1 = new_chrpc_array_type(CHRPC_STRING_T),
+            .ct2 = CHRPC_STRING_T,
+            .should_equate = false 
+        },
+        {
+            .ct1 = new_chrpc_array_type(CHRPC_STRING_T),
+            .ct2 = new_chrpc_array_type(CHRPC_STRING_T),
+            .should_equate = true
+        },
+        {
+            .ct1 = new_chrpc_array_type(CHRPC_STRING_T),
+            .ct2 = new_chrpc_array_type(CHRPC_UINT16_T),
+            .should_equate = false
+        },
+        {
+            .ct1 = new_chrpc_array_type(CHRPC_STRING_T),
+            .ct2 = new_chrpc_array_type(CHRPC_UINT16_T),
+            .should_equate = false
+        },
+        {
+            .ct1 = new_chrpc_struct_type(CHRPC_UINT16_T),
+            .ct2 = new_chrpc_struct_type(CHRPC_UINT16_T),
+            .should_equate = true
+        },
+        {
+            .ct1 = new_chrpc_struct_type(CHRPC_UINT16_T, CHRPC_UINT64_T),
+            .ct2 = new_chrpc_struct_type(CHRPC_UINT16_T),
+            .should_equate = false
+        },
+        {
+            .ct1 = new_chrpc_struct_type(CHRPC_UINT16_T, CHRPC_UINT64_T),
+            .ct2 = new_chrpc_struct_type(CHRPC_UINT16_T, CHRPC_UINT32_T),
+            .should_equate = false
+        },
+        {
+            .ct1 = new_chrpc_struct_type(CHRPC_UINT16_T, CHRPC_UINT64_T),
+            .ct2 = new_chrpc_struct_type(CHRPC_UINT16_T, CHRPC_UINT64_T),
+            .should_equate = true
+        }
+    };
+    size_t num_cases = sizeof(cases) / sizeof(cases[0]);
+
+    for (size_t i = 0; i < num_cases; i++) {
+        TEST_ASSERT_TRUE(cases[i].should_equate ==
+                chrpc_type_equals(cases[i].ct1, cases[i].ct2));
+    }
+
+    // Cleanup.
+    for (size_t i = 0; i < num_cases; i++) {
+        delete_chrpc_type(cases[i].ct1);
+        delete_chrpc_type(cases[i].ct2);
+    }
+}
+
+static void test_chrpc_type_to_buffer_successes(void) {
     struct {
         uint8_t exp[TEST_CHRPC_TEST_BUFFER_LEN];
         size_t exp_len;
@@ -144,7 +215,7 @@ static void test_chrpc_to_buffer_successes(void) {
     }
 }
 
-static void test_chrpc_to_buffer_failures(void) {
+static void test_chrpc_type_to_buffer_failures(void) {
     // Only errors are when the buffer isn't large enough
 
     chrpc_type_t *ct;
@@ -171,8 +242,48 @@ static void test_chrpc_to_buffer_failures(void) {
     delete_chrpc_type(ct);
 }
 
+// NOTE: consider just redoing these tests tbh....
+// Shouldn't need a to and a from tbh...
+
+static void test_chrpc_type_from_buffer_successes(void)  {
+    /*
+    struct {
+        uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
+        size_t act_len;
+        chrpc_type_t *exp_type;
+    } cases[] = {
+
+    };
+    size_t num_cases = sizeof(cases) / sizeof(cases[0]);
+
+    for (size_t i = 0; i < num_cases; i++) {
+        size_t readden;
+        chrpc_type_t *act_type;
+        TEST_ASSERT_EQUAL_INT(CHRPC_SUCCESS, 
+                chrpc_type_from_buffer(cases[i].act_buf, cases[i].act_len, 
+                    &act_type, &readden));
+        TEST_ASSERT_EQUAL_size_t(cases[i].act_len, readden);
+        TEST_ASSERT_TRUE(chrpc_type_equals(cases[i].exp_type, act_type));
+        
+        delete_chrpc_type(act_type);
+    }
+
+    // Cleanup.
+    for (size_t i = 0; i < num_cases; i++) {
+        delete_chrpc_type(cases[i].exp_type);
+    }
+    */
+}
+
+static void test_chrpc_type_from_buffer_failures(void)  {
+
+}
+
 void chrpc_serial_tests(void) {
-    RUN_TEST(test_chrpc_new_and_delete);
-    RUN_TEST(test_chrpc_to_buffer_successes);
-    RUN_TEST(test_chrpc_to_buffer_failures);
+    RUN_TEST(test_chrpc_type_new_and_delete);
+    RUN_TEST(test_chrpc_type_equals);
+    RUN_TEST(test_chrpc_type_to_buffer_successes);
+    RUN_TEST(test_chrpc_type_to_buffer_failures);
+    RUN_TEST(test_chrpc_type_from_buffer_successes);
+    RUN_TEST(test_chrpc_type_from_buffer_failures);
 }
