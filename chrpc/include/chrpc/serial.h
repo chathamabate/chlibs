@@ -77,7 +77,7 @@ struct _chrpc_struct_fields_types_t {
     chrpc_type_t **field_types;
 };
 
-static inline bool chrpc_type_is_primitive(chrpc_type_t *ct) {
+static inline bool chrpc_type_is_primitive(const chrpc_type_t *ct) {
     return chrpc_type_id_is_primitive(ct->type_id);
 }
 
@@ -94,7 +94,7 @@ extern chrpc_type_t * const CHRPC_UINT64_T;
 extern chrpc_type_t * const CHRPC_STRING_T; 
 
 // Returns NULL if given type ID is not primitive.
-chrpc_type_t *chrpc_primitive_type_from_id(chrpc_type_id_t tid);
+chrpc_type_t *new_chrpc_primitive_type_from_id(chrpc_type_id_t tid);
 
 
 // NOTE: Just like with the JSON library, these args for the composite types
@@ -117,7 +117,9 @@ void delete_chrpc_type(chrpc_type_t *ct);
 // I'm deciding to use buffer directly here instead of the stream types 
 // found in chutil. (Really just because the channel interface uses buffers)
 
-chrpc_status_t chrpc_type_to_buffer(chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written);
+chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written);
 chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t **ct, size_t *readden);
+
+bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2);
 
 #endif

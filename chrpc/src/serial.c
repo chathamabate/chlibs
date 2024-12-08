@@ -38,7 +38,7 @@ chrpc_type_t * const CHRPC_UINT32_T = &_CHRPC_UINT32_T;
 chrpc_type_t * const CHRPC_UINT64_T = &_CHRPC_UINT64_T;
 chrpc_type_t * const CHRPC_STRING_T = &_CHRPC_STRING_T; 
 
-chrpc_type_t *chrpc_primitive_type_from_id(chrpc_type_id_t tid) {
+chrpc_type_t *new_chrpc_primitive_type_from_id(chrpc_type_id_t tid) {
     switch (tid) {
     case CHRPC_BYTE_TID:
         return CHRPC_BYTE_T;
@@ -123,13 +123,14 @@ void delete_chrpc_type(chrpc_type_t *ct) {
             delete_chrpc_type(ct->struct_fields_types->field_types[i]);
         }
 
+        safe_free(ct->struct_fields_types->field_types);
         safe_free(ct->struct_fields_types);
     }
 
     safe_free(ct);
 }
 
-chrpc_status_t chrpc_type_to_buffer(chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written) {
+chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written) {
     if (buf_len < 1) {
         return CHRPC_BUFFER_TOO_SMALL; 
     } 
@@ -194,7 +195,7 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
     
     chrpc_type_id_t tid = (chrpc_type_id_t)buf[0];
 
-    chrpc_type_t *prim_type = chrpc_primitive_type_from_id(tid);
+    chrpc_type_t *prim_type = new_chrpc_primitive_type_from_id(tid);
     if (prim_type) {
         *readden = 1;
         *ct = prim_type;
@@ -261,5 +262,38 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
 
     // Bad type ID found.
     return CHRPC_SYNTAX_ERROR;
+}
+
+bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2) {
+    if (ct1->type_id != ct2->type_id) {
+        return false;
+    }
+
+    chrpc_type_id_t tid = ct1->type_id;
+
+    if (chrpc_type_id_is_primitive(tid)) {
+        return true;
+    }
+    
+    if (tid == CHRPC_ARRAY_TID) {
+        return chrpc_type_equals(ct1->array_cell_type, ct2->array_cell_type);
+    }
+
+    // Otherwise we are using a struct type.
+    
+    if (ct1->struct_fields_types->num_fields != ct2->struct_fields_types->num_fields) {
+        return false;
+    }
+
+    size_t num_fields = ct1->struct_fields_types->num_fields;
+
+    for (size_t i = 0; i < num_fields; i++) {
+        if (!chrpc_type_equals(ct1->struct_fields_types->field_types[i], 
+                    ct2->struct_fields_types->field_types[i])) {
+            return false; 
+        }
+    }
+
+    return true;
 }
 

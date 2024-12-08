@@ -2,6 +2,7 @@
 #include "channel_local2.h"
 #include "chsys/sys.h"
 
+#include "serial.h"
 #include "unity/unity.h"
 #include "unity/unity_internals.h"
 
@@ -21,5 +22,6 @@ int main(void) {
     UNITY_BEGIN();
     channel_local_tests();
     channel_local2_tests();
+    chrpc_serial_tests();
     safe_exit(UNITY_END());
 }
