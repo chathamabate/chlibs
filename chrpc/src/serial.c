@@ -297,3 +297,119 @@ bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2) {
     return true;
 }
 
+// --------------------------- VALUE WORK ---------------------------
+
+static chrpc_value_t *new_chrpc_value_from_pair(chrpc_type_t *ct, chrpc_inner_value_t *iv) {
+    chrpc_value_t *cv = (chrpc_value_t *)safe_malloc(sizeof(chrpc_value_t));
+
+    cv->type = ct;
+    cv->value = iv;
+
+    return cv;
+}
+
+chrpc_value_t *new_chrpc_b8_value(uint8_t b8_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->b8 = b8_val;
+
+    return new_chrpc_value_from_pair(CHRPC_BYTE_T, iv);
+}
+
+chrpc_value_t *new_chrpc_b8_array_value(uint8_t *b8_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->b8_arr = b8_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_BYTE_T), iv);
+}
+
+chrpc_value_t *new_chrpc_i16_value(int16_t i16_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->i16 = i16_val;
+
+    return new_chrpc_value_from_pair(CHRPC_INT16_T, iv);
+}
+
+chrpc_value_t *new_chrpc_i16_array_value(int16_t *i16_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->i16_arr = i16_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_INT16_T), iv);
+}
+
+chrpc_value_t *new_chrpc_i32_value(int32_t i32_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->i32 = i32_val;
+
+    return new_chrpc_value_from_pair(CHRPC_INT32_T, iv);
+}
+
+chrpc_value_t *new_chrpc_i32_array_value(int32_t *i32_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->i32_arr = i32_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_INT32_T), iv);
+}
+
+chrpc_value_t *new_chrpc_i64_value(int64_t i64_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->i64 = i64_val;
+
+    return new_chrpc_value_from_pair(CHRPC_INT64_T, iv);
+}
+
+chrpc_value_t *new_chrpc_i64_array_value(int64_t *i64_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->i64_arr = i64_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_INT64_T), iv);
+}
+
+chrpc_value_t *new_chrpc_u16_value(uint16_t u16_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->u16 = u16_val;
+
+    return new_chrpc_value_from_pair(CHRPC_UINT16_T, iv);
+}
+
+chrpc_value_t *new_chrpc_u16_array_value(uint16_t *u16_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->u16_arr = u16_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_UINT16_T), iv);
+}
+
+chrpc_value_t *new_chrpc_u32_value(uint32_t u32_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->u32 = u32_val;
+
+    return new_chrpc_value_from_pair(CHRPC_UINT32_T, iv);
+}
+
+chrpc_value_t *new_chrpc_u32_array_value(uint32_t *u32_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->u32_arr = u32_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_UINT32_T), iv);
+}
+
+chrpc_value_t *new_chrpc_u64_value(uint64_t u64_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->u64 = u64_val;
+
+    return new_chrpc_value_from_pair(CHRPC_UINT64_T, iv);
+}
+
+chrpc_value_t *new_chrpc_u64_array_value(uint64_t *u64_array_val, size_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->u64_arr = u64_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_UINT64_T), iv);
+}
+

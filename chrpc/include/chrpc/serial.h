@@ -122,4 +122,93 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
 
 bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2);
 
+typedef struct _chrpc_inner_value_t {
+    union {
+        // The numeric types will be stored densely in arrays.
+        // Hence why they have their own array fields.
+
+        uint8_t b8;
+        uint8_t *b8_arr;
+
+        int16_t i16;
+        int16_t *i16_arr;
+
+        int32_t i32;
+        int32_t *i32_arr;
+
+        int64_t i64;
+        int64_t *i64_arr;
+
+        uint16_t u16;
+        uint16_t *u16_arr;
+
+        uint32_t u32;
+        uint32_t *u32_arr;
+
+        uint64_t u64;
+        uint64_t *u64_arr;
+
+        char *str;
+
+        struct _chrpc_inner_value_t **array_entries;
+        struct _chrpc_inner_value_t **struct_entries;
+    };
+
+    // This field is only used for array types.
+    size_t array_len;
+} chrpc_inner_value_t;
+
+// A serialized value is really just pair.
+// The "value" field can only be interpreted using the type.
+//
+// chrpc_value_t will "own" both the type and value fields.
+
+typedef struct _chrpc_value_t {
+    chrpc_type_t *type;
+    chrpc_inner_value_t *value;
+} chrpc_value_t;
+
+// NOTE: In the below calls, array_len is ALWAYS the number of cells in the array,
+// NOT the number of bytes.
+
+chrpc_value_t *new_chrpc_b8_value(uint8_t b8_val);
+chrpc_value_t *new_chrpc_b8_array_value(uint8_t *b8_array_val, size_t array_len);
+
+chrpc_value_t *new_chrpc_i16_value(int16_t i16_val);
+chrpc_value_t *new_chrpc_i16_array_value(int16_t *i16_array_val, size_t array_len);
+
+chrpc_value_t *new_chrpc_i32_value(int32_t i32_val);
+chrpc_value_t *new_chrpc_i32_array_value(int32_t *i32_array_val, size_t array_len);
+
+chrpc_value_t *new_chrpc_i64_value(int64_t i64_val);
+chrpc_value_t *new_chrpc_i64_array_value(int64_t *i64_array_val, size_t array_len);
+
+chrpc_value_t *new_chrpc_u16_value(uint16_t u16_val);
+chrpc_value_t *new_chrpc_u16_array_value(uint16_t *u16_array_val, size_t array_len);
+
+chrpc_value_t *new_chrpc_u32_value(uint32_t u32_val);
+chrpc_value_t *new_chrpc_u32_array_value(uint32_t *u32_array_val, size_t array_len);
+
+chrpc_value_t *new_chrpc_u64_value(uint64_t u64_val);
+chrpc_value_t *new_chrpc_u64_array_value(uint64_t *u64_array_val, size_t array_len);
+
+
+// TODO: think about how strings should be handled.
+chrpc_value_t *new_chrpc_str_value(char *str_val);
+
+// In this one we first determine all types are the same, then delete the type??
+// Seems somewhat redundant, but whatevs...
+// This is a place where shared types would come in handy tbh..
+// Just saying...
+
+// Expects a non-zero number of pointers to other chrpc values.
+chrpc_value_t *_new_chrpc_array_value(int dummy,...);
+#define new_chrpc_array_value(...) \
+    _new_chrpc_array_value(0, __VA_ARGS__, NULL)
+
+// Expects a non-zero number of pointers to other chrpc values.
+chrpc_value_t *_new_chrpc_struct_value(int dummy,...);
+#define new_chrpc_struct_value(...) \
+    _new_chrpc_struct_value(0, __VA_ARGS__, NULL)
+
 #endif
