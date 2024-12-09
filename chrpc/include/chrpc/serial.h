@@ -73,7 +73,7 @@ struct _chrpc_type_t {
 };
 
 struct _chrpc_struct_fields_types_t {
-    size_t num_fields;
+    uint8_t num_fields;
     chrpc_type_t **field_types;
 };
 
@@ -105,6 +105,8 @@ chrpc_type_t *new_chrpc_array_type(chrpc_type_t *array_cell_type);
 
 // This expects a NULL terminated sequence of chrpc_type_t *'s.
 // dummy is not used, just for varargs.
+// 
+// NOTE: UB if more than 255 fields given.
 chrpc_type_t *_new_chrpc_struct_type(int dummy,...);
 
 // The given varargs cannot be empty.
@@ -212,6 +214,8 @@ chrpc_value_t *_new_chrpc_array_value_va(int dummy,...);
     _new_chrpc_array_value_va(0, __VA_ARGS__, NULL)
 
 // Expects a non-zero number of pointers to other chrpc values.
+// Same as above, struct_fields array MUST be a malloc'd array, and will be
+// unusable after this call.
 chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint32_t num_fields);
 chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...);
 #define new_chrpc_struct_value_va(...) \

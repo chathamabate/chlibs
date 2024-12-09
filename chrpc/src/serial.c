@@ -71,7 +71,7 @@ chrpc_type_t *new_chrpc_array_type(chrpc_type_t *array_cell_type) {
 }
 
 // Again, the given array will be placed into the created struct type. (i.e. ownership transfer)
-static chrpc_type_t *new_chrpc_struct_type_from_internals(size_t num_fields, chrpc_type_t **field_types) {
+static chrpc_type_t *new_chrpc_struct_type_from_internals(uint8_t num_fields, chrpc_type_t **field_types) {
     chrpc_struct_fields_types_t *sfts = (chrpc_struct_fields_types_t *)
         safe_malloc(sizeof(chrpc_struct_fields_types_t));
 
@@ -109,7 +109,7 @@ chrpc_type_t *_new_chrpc_struct_type(int dummy,...) {
 
     delete_list(l);
 
-    return new_chrpc_struct_type_from_internals(num_fields, sfts);
+    return new_chrpc_struct_type_from_internals((uint8_t)num_fields, sfts);
 }
 
 void delete_chrpc_type(chrpc_type_t *ct) {
@@ -165,7 +165,7 @@ chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t
         return CHRPC_BUFFER_TOO_SMALL;
     }
 
-    size_t num_fields = ct->struct_fields_types->num_fields;
+    uint8_t num_fields = ct->struct_fields_types->num_fields;
     chrpc_type_t **fields = ct->struct_fields_types->field_types;
 
     buf[0] = CHRPC_STRUCT_TID;
@@ -494,11 +494,37 @@ chrpc_value_t *_new_chrpc_array_value_va(int dummy,...) {
     }
 
     delete_list(l);
-    return new_chrpc_array_value(array_entries, len);
+    return new_chrpc_array_value(array_entries, (uint32_t)len);
 }
 
 chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint32_t num_fields) {
-    return NULL;
+    if (num_fields == 0) {
+        return NULL;
+    }
+
+    chrpc_type_t **field_types = 
+        (chrpc_type_t **)safe_malloc(sizeof(chrpc_type_t *) * num_fields);
+    chrpc_inner_value_t **ivs = 
+        (chrpc_inner_value_t **)safe_malloc(sizeof(chrpc_inner_value_t *) * num_fields);
+
+    for (uint32_t i = 0; i < num_fields; i++) {
+        field_types[i] = struct_fields[i]->type;
+        ivs[i] = struct_fields[i]->value;
+    }
+
+    chrpc_type_t *struct_type = new_chrpc_struct_type_from_internals(num_fields, field_types);
+    chrpc_inner_value_t *struct_iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    struct_iv->struct_entries = ivs;
+
+    chrpc_value_t *struct_value = new_chrpc_value_from_pair(struct_type, struct_iv);
+
+    // Finally, delete left over structs and array.
+    for (uint32_t i = 0; i < num_fields; i++) {
+        safe_free(struct_fields[i]);
+    }
+    safe_free(struct_fields);
+
+    return struct_value;
 }
 
 chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...) {
