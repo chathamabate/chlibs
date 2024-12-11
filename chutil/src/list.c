@@ -1,5 +1,6 @@
 #include "chutil/list.h"
 #include "chsys/mem.h"
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -73,6 +74,13 @@ array_list_t *new_array_list(size_t cs) {
 void delete_array_list(array_list_t *al) {
     safe_free(al->arr);
     safe_free(al);
+}
+
+void *delete_and_move_array_list(array_list_t *al) {
+    void *moved_table = safe_realloc(al->arr, al->len * al->cell_size);
+    safe_free(al);
+
+    return moved_table;
 }
 
 void al_push(array_list_t *al, const void *src) {

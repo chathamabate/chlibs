@@ -103,6 +103,17 @@ array_list_t *new_array_list(size_t cs);
 
 void delete_array_list(array_list_t *al);
 
+// This is an arraylist specific call. It will delete the array list
+// except for its underlying table which is returned.
+//
+// This call is used for when the user would like to use an array list as
+// an array builder.
+//
+// NOTE: The table will be realloc'd before returned to the user to be a
+// size of cell_size * len. Make sure you know the value of len and cell_size 
+// before calling this destructor.
+void *delete_and_move_array_list(array_list_t *al);
+
 static inline size_t al_len(array_list_t *al) {
     return al->len;
 }
