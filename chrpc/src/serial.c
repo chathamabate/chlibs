@@ -99,6 +99,8 @@ chrpc_type_t *_new_chrpc_struct_type(int dummy,...) {
         l_push(l, &iter);
     }
 
+    va_end(args);
+
     size_t num_fields = l_len(l);
     chrpc_type_t **sfts = (chrpc_type_t **)
         safe_malloc(sizeof(chrpc_type_t *) * num_fields);
@@ -309,6 +311,18 @@ static chrpc_value_t *new_chrpc_value_from_pair(chrpc_type_t *ct, chrpc_inner_va
     return cv;
 }
 
+#define VA_POPULATE(num_eles, arr, t) \
+    do { \
+        va_list __args; \
+        va_start(__args, num_eles); \
+        for (uint32_t i = 0; i < num_eles; i++) { \
+            (arr)[i] = (t)va_arg(__args, int64_t); \
+        } \
+        va_end(__args); \
+    } while (0)
+
+// BYTE8
+
 chrpc_value_t *new_chrpc_b8_value(uint8_t b8_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
     iv->b8 = b8_val;
@@ -323,6 +337,16 @@ chrpc_value_t *new_chrpc_b8_array_value(uint8_t *b8_array_val, uint32_t array_le
 
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_BYTE_T), iv);
 }
+
+chrpc_value_t *_new_chrpc_b8_array_value_va(uint32_t num_eles,...) {
+    uint8_t *b8_array_val = (uint8_t *)safe_malloc(sizeof(uint8_t) * num_eles);
+
+    VA_POPULATE(num_eles, b8_array_val, uint8_t);
+
+    return new_chrpc_b8_array_value(b8_array_val, num_eles);
+}
+
+// INT16
 
 chrpc_value_t *new_chrpc_i16_value(int16_t i16_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
@@ -339,6 +363,16 @@ chrpc_value_t *new_chrpc_i16_array_value(int16_t *i16_array_val, uint32_t array_
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_INT16_T), iv);
 }
 
+chrpc_value_t *_new_chrpc_i16_array_value_va(uint32_t num_eles,...) {
+    int16_t *i16_array_val = (int16_t *)safe_malloc(sizeof(int16_t) * num_eles);
+
+    VA_POPULATE(num_eles, i16_array_val, int16_t);
+
+    return new_chrpc_i16_array_value(i16_array_val, num_eles);
+}
+
+// INT32
+
 chrpc_value_t *new_chrpc_i32_value(int32_t i32_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
     iv->i32 = i32_val;
@@ -353,6 +387,16 @@ chrpc_value_t *new_chrpc_i32_array_value(int32_t *i32_array_val, uint32_t array_
 
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_INT32_T), iv);
 }
+
+chrpc_value_t *_new_chrpc_i32_array_value_va(uint32_t num_eles,...) {
+    int32_t *i32_array_val = (int32_t *)safe_malloc(sizeof(int32_t) * num_eles);
+
+    VA_POPULATE(num_eles, i32_array_val, int32_t);
+
+    return new_chrpc_i32_array_value(i32_array_val, num_eles);
+}
+
+// INT64
 
 chrpc_value_t *new_chrpc_i64_value(int64_t i64_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
@@ -369,6 +413,16 @@ chrpc_value_t *new_chrpc_i64_array_value(int64_t *i64_array_val, uint32_t array_
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_INT64_T), iv);
 }
 
+chrpc_value_t *_new_chrpc_i64_array_value_va(uint32_t num_eles,...) {
+    int64_t *i64_array_val = (int64_t *)safe_malloc(sizeof(int64_t) * num_eles);
+
+    VA_POPULATE(num_eles, i64_array_val, int64_t);
+
+    return new_chrpc_i64_array_value(i64_array_val, num_eles);
+}
+
+// UINT16
+
 chrpc_value_t *new_chrpc_u16_value(uint16_t u16_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
     iv->u16 = u16_val;
@@ -383,6 +437,16 @@ chrpc_value_t *new_chrpc_u16_array_value(uint16_t *u16_array_val, uint32_t array
 
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_UINT16_T), iv);
 }
+
+chrpc_value_t *_new_chrpc_u16_array_value_va(uint32_t num_eles,...) {
+    uint16_t *u16_array_val = (uint16_t *)safe_malloc(sizeof(uint16_t) * num_eles);
+
+    VA_POPULATE(num_eles, u16_array_val, uint16_t);
+
+    return new_chrpc_u16_array_value(u16_array_val, num_eles);
+}
+
+// UINT32
 
 chrpc_value_t *new_chrpc_u32_value(uint32_t u32_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
@@ -399,6 +463,16 @@ chrpc_value_t *new_chrpc_u32_array_value(uint32_t *u32_array_val, uint32_t array
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_UINT32_T), iv);
 }
 
+chrpc_value_t *_new_chrpc_u32_array_value_va(uint32_t num_eles,...) {
+    uint32_t *u32_array_val = (uint32_t *)safe_malloc(sizeof(uint32_t) * num_eles);
+
+    VA_POPULATE(num_eles, u32_array_val, uint32_t);
+
+    return new_chrpc_u32_array_value(u32_array_val, num_eles);
+}
+
+// UINT64
+
 chrpc_value_t *new_chrpc_u64_value(uint64_t u64_val) {
     chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
     iv->u64 = u64_val;
@@ -414,6 +488,16 @@ chrpc_value_t *new_chrpc_u64_array_value(uint64_t *u64_array_val, uint32_t array
     return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_UINT64_T), iv);
 }
 
+chrpc_value_t *_new_chrpc_u64_array_value_va(uint32_t num_eles,...) {
+    uint64_t *u64_array_val = (uint64_t *)safe_malloc(sizeof(uint64_t) * num_eles);
+
+    VA_POPULATE(num_eles, u64_array_val, uint64_t);
+
+    return new_chrpc_u64_array_value(u64_array_val, num_eles);
+}
+
+// STRING 
+
 chrpc_value_t *new_chrpc_str_value(const char *str_val) {
     char *new_str = (char *)safe_malloc((strlen(str_val) + 1) * sizeof(char));
     strcpy(new_str, str_val);
@@ -424,12 +508,30 @@ chrpc_value_t *new_chrpc_str_value(const char *str_val) {
     return new_chrpc_value_from_pair(CHRPC_STRING_T, iv);
 }
 
+chrpc_value_t *new_chrpc_str_array_value(char **str_array_val, uint32_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->str_arr = str_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_STRING_T), iv);
+}
+
+chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...) {
+    array_list_t *al = new_array_list(sizeof(char *));
+
+    return NULL;
+
+}
+
+
+/*
+
 chrpc_value_t *new_chrpc_array_value(chrpc_value_t **array_entries, uint32_t array_len) {
     if (array_len == 0) {
         return NULL;
     }
 
-    // All cells must thave the same type!
+    // All cells must have the same type!
     chrpc_type_t *cell_type = array_entries[0]->type;
 
     for (uint32_t i = 1; i < array_len; i++) {
@@ -437,6 +539,18 @@ chrpc_value_t *new_chrpc_array_value(chrpc_value_t **array_entries, uint32_t arr
             return NULL;
         }
     }
+
+    // We will only hold onto the first type, the rest can be deleted.
+    for (uint32_t i = 1; i < array_len; i++) {
+        delete_chrpc_type(array_entries[i]->type);
+    }
+
+
+
+    // We need to edit this if primite and non-string tbh.
+
+    // Is our type primitive and non-string?
+    // IDK my head kinda hurts today tbh...
 
     // Now, we will transfer all inner values into a new ivs array which
     // will be used to create our new chrpc_value_t.
@@ -453,9 +567,6 @@ chrpc_value_t *new_chrpc_array_value(chrpc_value_t **array_entries, uint32_t arr
 
     // NOTE: we will be saving the first cell type, so don't delete it!
 
-    for (uint32_t i = 1; i < array_len; i++) {
-        delete_chrpc_type(array_entries[i]->type);
-    }
 
     // This is slightly dangerous, but now we WILL delete all of the left over structs.
     for (uint32_t i = 0; i < array_len; i++) {
@@ -530,4 +641,6 @@ chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint32_t nu
 chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...) {
     return NULL;
 }
+
+*/
 

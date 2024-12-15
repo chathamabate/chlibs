@@ -6,6 +6,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "chutil/misc.h"
+
 // Type Grammar:
 // PRIM ::= BYTE | INT | UINT | STRING
 // COMP ::= STRUCT <NUM_FIELDS> TYPE+ 
@@ -36,6 +38,8 @@ typedef uint8_t chrpc_status_t;
 
 typedef uint8_t chrpc_type_id_t;
 
+// Primitive Types.
+
 #define CHRPC_BYTE_TID 0
 #define CHRPC_INT16_TID 1
 #define CHRPC_INT32_TID 2
@@ -44,8 +48,12 @@ typedef uint8_t chrpc_type_id_t;
 #define CHRPC_UINT32_TID 5
 #define CHRPC_UINT64_TID 6
 #define CHRPC_STRING_TID 7
+
+// Composite Types.
+
 #define CHRPC_STRUCT_TID 8
 #define CHRPC_ARRAY_TID 9
+
 
 // This relies on primite type IDs being defined consecutively.
 static inline bool chrpc_type_id_is_primitive(chrpc_type_id_t tid) {
@@ -151,6 +159,7 @@ typedef struct _chrpc_inner_value_t {
         uint64_t *u64_arr;
 
         char *str;
+        char **str_arr;
 
         struct _chrpc_inner_value_t **array_entries;
         struct _chrpc_inner_value_t **struct_entries;
@@ -172,32 +181,59 @@ typedef struct _chrpc_value_t {
 
 // NOTE: In the below calls, array_len is ALWAYS the number of cells in the array,
 // NOT the number of bytes.
+//
+// NOTE: VERY IMPORTANT: For the below primitive value calls.  ..._array_value(*arr, arr_len)
+// the given array must be stored in dynamic memory and will be OWNED by the resulting value.
 
 chrpc_value_t *new_chrpc_b8_value(uint8_t b8_val);
 chrpc_value_t *new_chrpc_b8_array_value(uint8_t *b8_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_b8_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_b8_array_value_va(...) _new_chrpc_b8_array_value_va(NUM_ARGS(uint8_t, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_i16_value(int16_t i16_val);
 chrpc_value_t *new_chrpc_i16_array_value(int16_t *i16_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_i16_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_i16_array_value_va(...) _new_chrpc_i16_array_value_va(NUM_ARGS(int16_t, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_i32_value(int32_t i32_val);
 chrpc_value_t *new_chrpc_i32_array_value(int32_t *i32_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_i32_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_i32_array_value_va(...) _new_chrpc_i32_array_value_va(NUM_ARGS(int32_t, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_i64_value(int64_t i64_val);
 chrpc_value_t *new_chrpc_i64_array_value(int64_t *i64_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_i64_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_i64_array_value_va(...) _new_chrpc_i64_array_value_va(NUM_ARGS(int64_t, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_u16_value(uint16_t u16_val);
 chrpc_value_t *new_chrpc_u16_array_value(uint16_t *u16_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_u16_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_u16_array_value_va(...) _new_chrpc_u16_array_value_va(NUM_ARGS(uint16_t, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_u32_value(uint32_t u32_val);
 chrpc_value_t *new_chrpc_u32_array_value(uint32_t *u32_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_u32_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_u32_array_value_va(...) _new_chrpc_u32_array_value_va(NUM_ARGS(uint32_t, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_u64_value(uint64_t u64_val);
 chrpc_value_t *new_chrpc_u64_array_value(uint64_t *u64_array_val, uint32_t array_len);
+chrpc_value_t *_new_chrpc_u64_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_u64_array_value_va(...) _new_chrpc_u64_array_value_va(NUM_ARGS(uint64_t, __VA_ARGS__), __VA_ARGS__)
 
-// NOTE: The given char * will be COPIED byte by byte into a dynamically
-// allocated buffer! So, the string you provide CAN be a literal or on the 
-// stack.
 chrpc_value_t *new_chrpc_str_value(const char *str_val);
+
+// Like the above primitive types, this given array will be owned by the created value.
+// NOTE: SO: the given array must live in dynamic memory, AND each pointed to string must 
+// live in dynamic memory. (THEY ALL WILL BE DELETED AT DESTRUCTION TIME)
+chrpc_value_t *new_chrpc_str_array_value(char **str_array_val, uint32_t array_len);
+
+// For convenience, the varargs flavor of the string array constructor will accept temporary/stack allocated
+// strings. Every string given as a vararg will be copied into a dynamic buffer which will then be pointed to by
+// a dynamic array. The final array will be given to the above function.
+//
+// (YOU CAN EVEN GIVE LITERALS)
+chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...);
+#define new_chrpc_str_array_value_va(...) _new_chrpc_str_array_value_va(0, __VA_ARGS__, NULL)
 
 // Expects a non-zero number of pointers to other chrpc values.
 // returns NULL if given length is 0, OR cell types don't match.
@@ -208,17 +244,21 @@ chrpc_value_t *new_chrpc_str_value(const char *str_val);
 //
 // Also if NULL, is returned because you screwed up the typing, the array_entries array
 // will be left in its given condition.
+/*
 chrpc_value_t *new_chrpc_array_value(chrpc_value_t **array_entries, uint32_t array_len);
 chrpc_value_t *_new_chrpc_array_value_va(int dummy,...);
 #define new_chrpc_array_value_va(...) \
     _new_chrpc_array_value_va(0, __VA_ARGS__, NULL)
+*/
 
 // Expects a non-zero number of pointers to other chrpc values.
 // Same as above, struct_fields array MUST be a malloc'd array, and will be
 // unusable after this call.
+/*
 chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint32_t num_fields);
 chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...);
 #define new_chrpc_struct_value_va(...) \
     _new_chrpc_struct_value_va(0, __VA_ARGS__, NULL)
+*/
 
 #endif

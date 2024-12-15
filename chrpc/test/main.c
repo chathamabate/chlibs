@@ -7,6 +7,7 @@
 #include "unity/unity_internals.h"
 
 #include "channel_local.h"
+#include "chutil/misc.h"
 
 void setUp(void) {
     sys_reset_malloc_count();
