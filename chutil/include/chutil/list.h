@@ -25,6 +25,9 @@ typedef void *(*list_next_ft)(void *);
 typedef struct _list_impl_t {
     list_constructor_ft constructor;
     list_destructor_ft  destructor;
+
+    // Move destructor should return NULL and call normal delete routine
+    // when given list is empty.
     list_move_destructor_ft move_destructor;
 
     list_len_ft         len;

@@ -3,6 +3,7 @@
 #include "chsys/mem.h"
 #include "chutil/list.h"
 #include <stdarg.h>
+#include <stdint.h>
 #include <string.h>
 
 static chrpc_type_t _CHRPC_BYTE_T = {
@@ -89,9 +90,6 @@ chrpc_type_t *_new_chrpc_struct_type(int dummy,...) {
     va_list args;
     va_start(args, dummy);
 
-    // Kinda awkward here, we will populate this array list,
-    // then afterwards copy it into a normal array.
-
     chrpc_type_t *iter;
     list_t *l = new_list(ARRAY_LIST_IMPL, sizeof(chrpc_type_t *));
 
@@ -102,16 +100,14 @@ chrpc_type_t *_new_chrpc_struct_type(int dummy,...) {
     va_end(args);
 
     size_t num_fields = l_len(l);
-    chrpc_type_t **sfts = (chrpc_type_t **)
-        safe_malloc(sizeof(chrpc_type_t *) * num_fields);
-
-    for (size_t i = 0; i < num_fields; i++) {
-        l_get_copy(l, i, &(sfts[i]));
+    if (num_fields < 1 || CHRPC_MAX_STRUCT_FIELDS < num_fields) {
+        delete_list(l);
+        return NULL; 
     }
 
-    delete_list(l);
+    chrpc_type_t **arr = delete_and_move_list(l);
 
-    return new_chrpc_struct_type_from_internals((uint8_t)num_fields, sfts);
+    return new_chrpc_struct_type_from_internals((uint8_t)num_fields, arr);
 }
 
 void delete_chrpc_type(chrpc_type_t *ct) {
@@ -233,6 +229,10 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
         
         if (num_fields < 1) {
             return CHRPC_EMPTY_STRUCT_TYPE;
+        }
+
+        if (num_fields > CHRPC_MAX_STRUCT_FIELDS) {
+            return CHRPC_STRUCT_TYPE_TOO_LARGE;
         }
 
         size_t pos = 2;
@@ -517,7 +517,25 @@ chrpc_value_t *new_chrpc_str_array_value(char **str_array_val, uint32_t array_le
 }
 
 chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...) {
-    array_list_t *al = new_array_list(sizeof(char *));
+    list_t *l = new_list(ARRAY_LIST_IMPL, sizeof(char *));
+
+    va_list args;
+    va_start(args, dummy);
+
+    const char *iter;
+    while ((iter = va_arg(args, const char *))) {
+        size_t s_len = strlen(iter);
+        char *dyna_buf = (char *)safe_malloc((s_len + 1) * sizeof(char));
+        strcpy(dyna_buf, iter);
+
+        l_push(l, dyna_buf);
+    }
+
+    va_end(args);
+
+
+
+
 
     return NULL;
 

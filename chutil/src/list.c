@@ -85,6 +85,11 @@ void delete_array_list(array_list_t *al) {
 }
 
 void *delete_and_move_array_list(array_list_t *al) {
+    if (al->len == 0) {
+        delete_array_list(al);
+        return NULL;
+    }
+
     // NOTE: The given table is realloc'd before being removed!
     void *res = safe_realloc(al->arr, al->cell_size * al->len);
     safe_free(al);
@@ -179,6 +184,11 @@ void delete_linked_list(linked_list_t *ll) {
 }
 
 void *delete_and_move_linked_list(linked_list_t *ll) {
+    if (ll->len == 0) {
+        delete_linked_list(ll);
+        return NULL;
+    }
+
     void *res = safe_malloc(ll->cell_size * ll->len);
 
     linked_list_node_hdr_t *node = ll->first;
@@ -187,6 +197,8 @@ void *delete_and_move_linked_list(linked_list_t *ll) {
     while (node) {
         void *cell = llnh_get_cell(node); 
         memcpy(((uint8_t *)res) + (i * ll->cell_size), cell, ll->cell_size);
+
+        node = node->next;
         i++;
     }
 

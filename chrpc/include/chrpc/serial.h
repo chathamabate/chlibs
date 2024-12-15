@@ -35,6 +35,7 @@ typedef uint8_t chrpc_status_t;
 #define CHRPC_UNEXPECTED_END 2
 #define CHRPC_BUFFER_TOO_SMALL 3
 #define CHRPC_EMPTY_STRUCT_TYPE 4
+#define CHRPC_STRUCT_TYPE_TOO_LARGE 4
 
 typedef uint8_t chrpc_type_id_t;
 
@@ -80,6 +81,8 @@ struct _chrpc_type_t {
     };
 };
 
+#define CHRPC_MAX_STRUCT_FIELDS UINT8_MAX 
+
 struct _chrpc_struct_fields_types_t {
     uint8_t num_fields;
     chrpc_type_t **field_types;
@@ -113,8 +116,8 @@ chrpc_type_t *new_chrpc_array_type(chrpc_type_t *array_cell_type);
 
 // This expects a NULL terminated sequence of chrpc_type_t *'s.
 // dummy is not used, just for varargs.
-// 
-// NOTE: UB if more than 255 fields given.
+//
+// NOTE: Returns NULL if too many fields given (or not enough)
 chrpc_type_t *_new_chrpc_struct_type(int dummy,...);
 
 // The given varargs cannot be empty.
@@ -134,8 +137,11 @@ bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2);
 
 typedef struct _chrpc_inner_value_t {
     union {
-        // The numeric types will be stored densely in arrays.
+        // The primitive types will be stored densely in arrays.
         // Hence why they have their own array fields.
+        //
+        // If array_len is 0, the entries array should always be NULL!
+        // Regardless of type of array it is.
 
         uint8_t b8;
         uint8_t *b8_arr;
