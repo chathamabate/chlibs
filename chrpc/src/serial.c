@@ -587,24 +587,16 @@ chrpc_value_t *_new_chrpc_array_value_va(int dummy,...) {
     va_list args;
     va_start(args, dummy);
 
-    list_t *l = new_list(ARRAY_LIST_IMPL, sizeof(chrpc_value_t *));
-
+    array_list_t *al = new_array_list(sizeof(chrpc_value_t *));
     chrpc_value_t *iter;
     while ((iter = va_arg(args, chrpc_value_t *))) {
-        l_push(l, &iter);
+        al_push(al, &iter);
     }
 
-    // Maybe one day I should add a to_array function on my list type.
-    // Oh well...
-
-    size_t len = l_len(l);
+    size_t len = al_len(al);;
     chrpc_value_t **array_entries = 
-        (chrpc_value_t **)safe_malloc(sizeof(chrpc_value_t *) * len);
-    for (size_t i = 0; i < len; i++) {
-        l_get_copy(l, i, &(array_entries[i]));
-    }
+        (chrpc_value_t **)delete_and_move_array_list(al);
 
-    delete_list(l);
     return new_chrpc_array_value(array_entries, (uint32_t)len);
 }
 

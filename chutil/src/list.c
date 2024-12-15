@@ -1,5 +1,6 @@
 #include "chutil/list.h"
 #include "chsys/mem.h"
+#include <stdlib.h>
 #include <string.h>
 
 
