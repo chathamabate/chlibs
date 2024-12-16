@@ -151,6 +151,17 @@ static inline chrpc_value_t *new_chrpc_str_empty_array_value(void) {
 chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...);
 #define new_chrpc_str_array_value_va(...) _new_chrpc_str_array_value_va(0, __VA_ARGS__, NULL)
 
+// NOTE: For composite array types I created and empty and non-empty constructor.
+// Unlike the above constructors, it's impossible to know the type of the resulting array
+// if no entries were given!
+
+// The given type will be owned by the created value.
+chrpc_value_t *new_chrpc_composite_empty_array_value(chrpc_type_t *t);
+chrpc_value_t *new_chrpc_composite_nempty_array_value(chrpc_value_t **entries, uint32_t num_entries);
+chrpc_value_t *_new_chrpc_composite_nempty_array_value_va(int dummy,...);
+#define new_chrpc_composite_nempty_array_value_va(...) \
+    _new_chrpc_composite_nempty_array_value_va(0, __VA_ARGS__, NULL)
+
 // Expects a non-zero number of pointers to other chrpc values.
 // Same as above, struct_fields array MUST be a malloc'd array, and will be
 // unusable after this call.
@@ -158,22 +169,5 @@ chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint8_t num
 chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...);
 #define new_chrpc_struct_value_va(...) \
     _new_chrpc_struct_value_va(0, __VA_ARGS__, NULL)
-
-// Expects a non-zero number of pointers to other chrpc values.
-// returns NULL if given length is 0, OR cell types don't match.
-//
-// NOTE: VERY IMPORTANT: all resrouces used by array_entries will either be moved
-// into the new chrpc_value_t, or freed. This call REQUIRES that array_entries
-// is a DYNAMICALLY ALLOCATED array on the heap. It will be freed within this call!
-//
-// Also if NULL, is returned because you screwed up the typing, the array_entries array
-// will be left in its given condition.
-/*
-chrpc_value_t *new_chrpc_array_value(chrpc_value_t **array_entries, uint32_t array_len);
-chrpc_value_t *_new_chrpc_array_value_va(int dummy,...);
-#define new_chrpc_array_value_va(...) \
-    _new_chrpc_array_value_va(0, __VA_ARGS__, NULL)
-*/
-
 
 #endif

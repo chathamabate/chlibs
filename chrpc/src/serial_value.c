@@ -324,6 +324,85 @@ chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...) {
     return new_chrpc_str_array_value(arr, len);
 }
 
+chrpc_value_t *new_chrpc_composite_empty_array_value(chrpc_type_t *t) {
+    // This call only accepts composite types!
+    if (t->type_id != CHRPC_ARRAY_TID && t->type_id != CHRPC_STRUCT_TID) {
+        return NULL;
+    }
+
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+
+    iv->array_entries = NULL;
+    iv->array_len = 0;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(t), iv);
+}
+
+chrpc_value_t *new_chrpc_composite_nempty_array_value(chrpc_value_t **entries, uint32_t num_entries) {
+    if (num_entries == 0) {
+        return NULL;
+    }
+
+    // Let's first get our array cell type. (Must be composite)
+    // We'll save this type for later.
+    chrpc_type_t *cell_type = entries[0]->type;
+    if (cell_type->type_id != CHRPC_ARRAY_TID && cell_type->type_id != CHRPC_STRUCT_TID) {
+        return NULL;
+    }
+
+    // All given values must have same type!
+    for (uint32_t i = 1; i < num_entries; i++) {
+        if (!chrpc_type_equals(cell_type, entries[i]->type)) {
+            return NULL;
+        }
+    }
+
+    // Delete all extra types.
+    for (uint32_t i = 1; i < num_entries; i++) {
+        delete_chrpc_type(entries[i]->type);
+    }
+
+    chrpc_inner_value_t **iv_arr = (chrpc_inner_value_t **)safe_malloc(sizeof(chrpc_inner_value_t *) * num_entries);
+    for (uint32_t i = 0; i < num_entries; i++) {
+        iv_arr[i] = entries[i]->value;
+    }
+
+    // Delete remaining value pair structs.
+    for (uint32_t i = 0; i < num_entries; i++) {
+        safe_free(entries[i]);
+    }
+
+    // Finally, put it all together!
+    
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->array_entries = iv_arr;
+    iv->array_len = num_entries;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(cell_type), iv);
+}
+
+chrpc_value_t *_new_chrpc_composite_nempty_array_value_va(int dummy,...) {
+    list_t *buffer = new_list(ARRAY_LIST_IMPL, sizeof(chrpc_value_t *));
+
+    va_list args;
+    va_start(args, dummy);
+    chrpc_value_t *iter;
+    while ((iter = va_arg(args, chrpc_value_t *))) {
+        l_push(buffer, iter);
+    }
+    va_end(args);
+
+    uint32_t len = (uint32_t)l_len(buffer);
+
+    if (len == 0) {
+        delete_list(buffer);
+        return NULL;
+    }
+
+    chrpc_value_t **arr = delete_and_move_list(buffer);
+    return new_chrpc_composite_nempty_array_value(arr, len);
+}
+
 chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint8_t num_fields) {
     if (num_fields < 1 || CHRPC_MAX_STRUCT_FIELDS < num_fields) {
         return NULL;
