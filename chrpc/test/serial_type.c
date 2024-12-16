@@ -1,8 +1,8 @@
 
 
-#include "serial.h"
+#include "serial_type.h"
 
-#include "chrpc/serial.h"
+#include "chrpc/serial_type.h"
 #include "unity/unity.h"
 #include "chsys/mem.h"
 
@@ -336,7 +336,7 @@ static void test_chrpc_type_from_buffer_failures(void)  {
     }
 }
 
-void chrpc_serial_tests(void) {
+void chrpc_serial_type_tests(void) {
     RUN_TEST(test_chrpc_type_new_and_delete);
     RUN_TEST(test_chrpc_type_equals);
     RUN_TEST(test_chrpc_type_to_and_from_buffer);
