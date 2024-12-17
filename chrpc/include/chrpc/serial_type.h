@@ -79,7 +79,7 @@ struct _chrpc_type_t {
     };
 };
 
-#define CHRPC_MAX_STRUCT_FIELDS UINT8_MAX 
+#define CHRPC_MAX_STRUCT_FIELDS 64
 
 struct _chrpc_struct_fields_types_t {
     uint8_t num_fields;

@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
     if (t->type_id == CHRPC_STRUCT_TID) {
@@ -16,6 +17,7 @@ void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
             chrpc_type_t *field_type = struct_fields->field_types[i]; 
             delete_chrpc_inner_value(field_type, iv->struct_entries[i]);
         }
+        safe_free(iv->struct_entries);
     } else if (t->type_id == CHRPC_ARRAY_TID) {
         chrpc_type_t *cell_type = t->array_cell_type;
 
@@ -78,6 +80,10 @@ void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
                 for (uint32_t i = 0; i < iv->array_len; i++) {
                     delete_chrpc_inner_value(cell_type, iv->array_entries[i]);
                 }
+
+                if (iv->array_entries) {
+                    safe_free(iv->array_entries);
+                }
                 break;
         }
     } else if (t->type_id == CHRPC_STRING_TID) {
@@ -94,6 +100,12 @@ static chrpc_value_t *new_chrpc_value_from_pair(chrpc_type_t *ct, chrpc_inner_va
     cv->value = iv;
 
     return cv;
+}
+
+void delete_chrpc_value(chrpc_value_t *v) {
+    delete_chrpc_inner_value(v->type, v->value);
+    delete_chrpc_type(v->type);
+    safe_free(v);
 }
 
 #define VA_POPULATE(num_eles, arr, t) \
@@ -313,7 +325,7 @@ chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...) {
         char *dyna_buf = (char *)safe_malloc((s_len + 1) * sizeof(char));
         strcpy(dyna_buf, iter);
 
-        l_push(l, dyna_buf);
+        l_push(l, &dyna_buf);
     }
 
     va_end(args);
@@ -371,6 +383,7 @@ chrpc_value_t *new_chrpc_composite_nempty_array_value(chrpc_value_t **entries, u
     for (uint32_t i = 0; i < num_entries; i++) {
         safe_free(entries[i]);
     }
+    safe_free(entries);
 
     // Finally, put it all together!
     
@@ -388,7 +401,7 @@ chrpc_value_t *_new_chrpc_composite_nempty_array_value_va(int dummy,...) {
     va_start(args, dummy);
     chrpc_value_t *iter;
     while ((iter = va_arg(args, chrpc_value_t *))) {
-        l_push(buffer, iter);
+        l_push(buffer, &iter);
     }
     va_end(args);
 
@@ -400,7 +413,17 @@ chrpc_value_t *_new_chrpc_composite_nempty_array_value_va(int dummy,...) {
     }
 
     chrpc_value_t **arr = delete_and_move_list(buffer);
-    return new_chrpc_composite_nempty_array_value(arr, len);
+    chrpc_value_t *ret_val = new_chrpc_composite_nempty_array_value(arr, len);
+
+    // On error case, cleanup these values which would otherwise become unreachable.
+    if (!ret_val) {
+        for (size_t i = 0; i < len; i++) {
+            delete_chrpc_value(arr[i]);
+        }
+        safe_free(arr);
+    }
+
+    return ret_val;
 }
 
 chrpc_value_t *new_chrpc_struct_value(chrpc_value_t **struct_fields, uint8_t num_fields) {
@@ -440,19 +463,23 @@ chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...) {
     va_start(args, dummy);
     chrpc_value_t *iter;
     while ((iter = va_arg(args, chrpc_value_t *))) {
-        l_push(buffer, iter);
+        l_push(buffer, &iter);
     }
     va_end(args);
 
     size_t len = l_len(buffer);
-    if (len > CHRPC_MAX_STRUCT_FIELDS) {
-        // Doing this check here too because length will be cast down to a single
-        // byte when calling the above function.
-        delete_list(buffer);
+    chrpc_value_t **arr = (chrpc_value_t **)delete_and_move_list(buffer);
+
+    // Doing this check here too because length will be cast down to a single
+    // byte when calling the above function.
+    if (len < 1 || CHRPC_MAX_STRUCT_FIELDS < len) {
+        for (size_t i = 0; i < len; i++) {
+            delete_chrpc_value(arr[i]);
+        }
+        safe_free(arr);
         return NULL;
     }
 
-    chrpc_value_t **arr = (chrpc_value_t **)delete_and_move_list(buffer);
     return new_chrpc_struct_value(arr, len);
 }
 

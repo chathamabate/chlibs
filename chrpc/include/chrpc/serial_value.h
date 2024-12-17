@@ -71,6 +71,8 @@ typedef struct _chrpc_value_t {
     chrpc_inner_value_t *value;
 } chrpc_value_t;
 
+void delete_chrpc_value(chrpc_value_t *v);
+
 // NOTE: In the below calls, array_len is ALWAYS the number of cells in the array,
 // NOT the number of bytes.
 //
@@ -154,6 +156,18 @@ chrpc_value_t *_new_chrpc_str_array_value_va(int dummy,...);
 // NOTE: For composite array types I created and empty and non-empty constructor.
 // Unlike the above constructors, it's impossible to know the type of the resulting array
 // if no entries were given!
+
+// NOTE: for composite_nempty_array_value and struct_value, NULL is returned if the given entries array
+// is malformed. (For example, if the entries given for the array are of mixed types)
+// Remember that on success, the given array becomes property of the created value.
+//
+// When NULL is returned, the given array persists in memory. It is your job to clean up
+// or reuse the array that was rejected.
+//
+// NOTE: This is not the case for the va flavors of these calls. As it would be impossible to have access
+// to the array which was created, when NULL is returned, all created values are deleted.
+//
+// This is kinda confusing, I'd recommend just looking at the code for these functions.
 
 // The given type will be owned by the created value.
 chrpc_value_t *new_chrpc_composite_empty_array_value(chrpc_type_t *t);

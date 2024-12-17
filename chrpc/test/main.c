@@ -3,6 +3,7 @@
 #include "chsys/sys.h"
 
 #include "serial_type.h"
+#include "serial_value.h"
 #include "unity/unity.h"
 #include "unity/unity_internals.h"
 
@@ -24,5 +25,6 @@ int main(void) {
     channel_local_tests();
     channel_local2_tests();
     chrpc_serial_type_tests();
+    chrpc_serial_value_tests();
     safe_exit(UNITY_END());
 }
