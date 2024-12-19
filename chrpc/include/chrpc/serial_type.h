@@ -56,7 +56,7 @@ typedef uint8_t chrpc_type_id_t;
 
 // This relies on primite type IDs being defined consecutively.
 static inline bool chrpc_type_id_is_primitive(chrpc_type_id_t tid) {
-    return (CHRPC_BYTE_TID <= tid && tid <= CHRPC_STRING_TID);
+    return (/*CHRPC_BYTE_TID <= tid &&*/ tid <= CHRPC_STRING_TID);
 }
 
 // A Tree like structure for helping specify and work with serializable types.

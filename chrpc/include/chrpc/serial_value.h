@@ -184,4 +184,6 @@ chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...);
 #define new_chrpc_struct_value_va(...) \
     _new_chrpc_struct_value_va(0, __VA_ARGS__, NULL)
 
+bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1);
+
 #endif

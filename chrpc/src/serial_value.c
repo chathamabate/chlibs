@@ -483,4 +483,123 @@ chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...) {
     return new_chrpc_struct_value(arr, len);
 }
 
+static bool chrpc_inner_array_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1);
+static bool chrpc_inner_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1);
+
+#define CMP_IV_ARR(arr1, arr2, len) \
+    do { \
+        for (uint32_t i = 0; i < len; i++) { \
+            if (arr1[i] != arr2[i])  { \
+                return false; \
+            } \
+        } \
+        return true; \
+    } while (0)
+
+// Expects iv0 and iv1 are non NULL inner values with array types having cell type of ct.
+static bool chrpc_inner_array_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1) {
+    if (iv0->array_len != iv1->array_len) {
+        return false;
+    }
+
+    size_t len = iv0->array_len;
+
+    switch (ct->type_id) {
+    case CHRPC_BYTE_TID:
+        CMP_IV_ARR(iv0->b8_arr, iv1->b8_arr, len);
+    case CHRPC_INT16_TID:
+        CMP_IV_ARR(iv0->i16_arr, iv1->i16_arr, len);
+    case CHRPC_INT32_TID:
+        CMP_IV_ARR(iv0->i32_arr, iv1->i32_arr, len);
+    case CHRPC_INT64_TID:
+        CMP_IV_ARR(iv0->i64_arr, iv1->i64_arr, len);
+    case CHRPC_UINT16_TID:
+        CMP_IV_ARR(iv0->u16_arr, iv1->u16_arr, len);
+    case CHRPC_UINT32_TID:
+        CMP_IV_ARR(iv0->u32_arr, iv1->u32_arr, len);
+    case CHRPC_UINT64_TID:
+        CMP_IV_ARR(iv0->u64_arr, iv1->u64_arr, len);
+
+    case CHRPC_STRING_TID:
+        for (size_t i = 0; i < len; i++) {
+            if (strcmp(iv0->str_arr[i], iv1->str_arr[i])) {
+                return false;
+            }
+        }
+        return true;
+
+    // Composite array!
+    case CHRPC_STRUCT_TID:
+    case CHRPC_ARRAY_TID:
+        for (size_t i = 0; i < len; i++) {
+            if (!chrpc_inner_value_equals(ct, iv0->array_entries[i], iv1->array_entries[i])) {
+                return false;
+            }
+        }
+        return true;
+
+    // Shouldn't make it here.
+    default:
+        return false;
+    }
+}
+
+// This function assumes iv0 and iv1 have the same type ct, and that neither inner value is NULL.
+// (That is they belong to a valid chrpc_value_t object)
+static bool chrpc_inner_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1) {
+    switch (ct->type_id) {
+    case CHRPC_BYTE_TID:
+        return iv0->b8 == iv1->b8;
+    case CHRPC_INT16_TID:
+        return iv0->i16 == iv1->i16;
+    case CHRPC_INT32_TID:
+        return iv0->i32 == iv1->i32;
+    case CHRPC_INT64_TID:
+        return iv0->i64 == iv1->i64;
+    case CHRPC_UINT16_TID:
+        return iv0->u16 == iv1->u16;
+    case CHRPC_UINT32_TID:
+        return iv0->u32 == iv1->u32;
+    case CHRPC_UINT64_TID:
+        return iv0->u64 == iv1->u64;
+
+    case CHRPC_STRING_TID:
+        return strcmp(iv0->str, iv1->str) == 0;
+
+    case CHRPC_STRUCT_TID:
+        // Check every field plz.
+        for (size_t i = 0; i < ct->struct_fields_types->num_fields; i++) {
+            if (!chrpc_inner_value_equals(ct->struct_fields_types->field_types[i], 
+                        iv0->struct_entries[i], iv1->struct_entries[i])) {
+                return false;
+            }
+        }
+        return true;
+
+    case CHRPC_ARRAY_TID:
+        return chrpc_inner_array_value_equals(ct->array_cell_type, iv0, iv1);
+
+    // Shouldn't make it here.
+    default:
+        return false;
+    }
+}
+
+
+bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1) {
+    if (cv0 == cv1) {
+        return true;
+    }
+
+    if (!cv0 || !cv1) {
+        return false;
+    }
+
+    if (!chrpc_type_equals(cv0->type, cv1->type)) {
+        return false;
+    }
+
+    return chrpc_inner_value_equals(cv0->type, cv0->value, cv1->value);
+}
+
 

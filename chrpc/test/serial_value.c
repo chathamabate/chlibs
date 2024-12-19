@@ -2,7 +2,6 @@
 #include "serial_value.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
-#include "chsys/mem.h"
 
 #include "unity/unity.h"
 #include "unity/unity_internals.h"
@@ -212,6 +211,117 @@ static void test_chrpc_big_composite_value(void) {
     delete_chrpc_value(cv);
 }
 
+static void test_assert_eq_chrpc_value(chrpc_value_t *v0, chrpc_value_t *v1) {
+    TEST_ASSERT_TRUE(chrpc_value_equals(v0, v1));
+
+    delete_chrpc_value(v0);
+    delete_chrpc_value(v1);
+}
+
+static void test_assert_neq_chrpc_value(chrpc_value_t *v0, chrpc_value_t *v1) {
+    TEST_ASSERT_FALSE(chrpc_value_equals(v0, v1));
+
+    delete_chrpc_value(v0);
+    delete_chrpc_value(v1);
+}
+
+static void test_chrpc_value_equals(void) {
+    test_assert_eq_chrpc_value(
+        new_chrpc_b8_value(1),
+        new_chrpc_b8_value(1)
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_b8_value(2),
+        new_chrpc_b8_value(1)
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_b8_value(2),
+        new_chrpc_i16_value(2)
+    );
+
+    test_assert_eq_chrpc_value(
+        new_chrpc_str_value("Hello"),
+        new_chrpc_str_value("Hello")
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_str_value("Hello"),
+        new_chrpc_str_value("ello")
+    );
+
+    test_assert_eq_chrpc_value(
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby"),
+            new_chrpc_i64_value(-123)
+        ),
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby"),
+            new_chrpc_i64_value(-123)
+        )
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby")
+        ),
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby"),
+            new_chrpc_i64_value(-123)
+        )
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby"),
+            new_chrpc_i64_value(123)
+        ),
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby"),
+            new_chrpc_i64_value(-123)
+        )
+    );
+
+    // Finally arrays.
+    test_assert_eq_chrpc_value(
+        new_chrpc_i16_array_value_va(1, 2, 3),
+        new_chrpc_i16_array_value_va(1, 2, 3)
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_i16_array_value_va(1, 3),
+        new_chrpc_i16_array_value_va(1, 2, 3)
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_i16_array_value_va(1, 4, 3),
+        new_chrpc_i16_array_value_va(1, 2, 3)
+    );
+
+    test_assert_eq_chrpc_value(
+        new_chrpc_composite_nempty_array_value_va(
+            new_chrpc_b8_array_value_va(1, 2, 3),
+            new_chrpc_b8_array_value_va(4, 5, 6)
+        ),
+        new_chrpc_composite_nempty_array_value_va(
+            new_chrpc_b8_array_value_va(1, 2, 3),
+            new_chrpc_b8_array_value_va(4, 5, 6)
+        )
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_composite_nempty_array_value_va(
+            new_chrpc_b8_array_value_va(1, 4, 3),
+            new_chrpc_b8_array_value_va(4, 5, 6)
+        ),
+        new_chrpc_composite_nempty_array_value_va(
+            new_chrpc_b8_array_value_va(1, 2, 3),
+            new_chrpc_b8_array_value_va(4, 5, 6)
+        )
+    );
+}
+
 void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_simple_constructors);
     RUN_TEST(test_chrpc_value_simple_array_constructors);
@@ -219,4 +329,5 @@ void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_struct_value);
     RUN_TEST(test_chrpc_composite_array);
     RUN_TEST(test_chrpc_big_composite_value);
+    RUN_TEST(test_chrpc_value_equals);
 }
