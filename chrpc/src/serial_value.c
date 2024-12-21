@@ -602,4 +602,57 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1) {
     return chrpc_inner_value_equals(cv0->type, cv0->value, cv1->value);
 }
 
+#define IV_NUMERIC_TO_BUFFER(type, val, b, bl, w) \
+    do { \
+        size_t s = sizeof(type); \
+        if (bl < s) { \
+            return CHRPC_BUFFER_TOO_SMALL; \
+        } \
+        *(type *)(b) = val; \
+        *(w) = s; \
+        return CHRPC_SUCCESS; \
+    } while (0)
 
+chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_inner_value_t *iv, uint8_t *buf, size_t buf_len, size_t *written) {
+    size_t s_len;
+
+    switch (ct->type_id) {
+        case CHRPC_BYTE_TID:
+            IV_NUMERIC_TO_BUFFER(uint8_t, iv->b8, buf, buf_len, written);
+
+        case CHRPC_UINT16_TID:
+            IV_NUMERIC_TO_BUFFER(uint16_t, iv->u16, buf, buf_len, written);
+
+        case CHRPC_UINT32_TID:
+            IV_NUMERIC_TO_BUFFER(uint32_t, iv->u32, buf, buf_len, written);
+
+        case CHRPC_UINT64_TID:
+            IV_NUMERIC_TO_BUFFER(uint64_t, iv->u64, buf, buf_len, written);
+
+        case CHRPC_INT16_TID:
+            IV_NUMERIC_TO_BUFFER(int16_t, iv->i16, buf, buf_len, written);
+
+        case CHRPC_INT32_TID:
+            IV_NUMERIC_TO_BUFFER(int32_t, iv->i32, buf, buf_len, written);
+
+        case CHRPC_INT64_TID:
+            IV_NUMERIC_TO_BUFFER(int64_t, iv->i64, buf, buf_len, written);
+
+        case CHRPC_STRING_TID:
+            s_len = strlen(iv->str) + 1;
+            if (buf_len < s_len) {
+                return CHRPC_BUFFER_TOO_SMALL;
+            }
+
+            strcpy((char *)buf, iv->str);
+            *written = s_len;
+            return CHRPC_SUCCESS;
+
+        case CHRPC_ARRAY_TID:
+        case CHRPC_STRUCT_TID:
+            return CHRPC_MALFORMED_TYPE;
+
+        default:
+            return CHRPC_MALFORMED_TYPE;
+    }
+}
