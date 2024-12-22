@@ -631,160 +631,114 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1) {
     return chrpc_inner_value_equals(cv0->type, cv0->value, cv1->value);
 }
 
-static chrpc_status_t chrpc_block_to_buffer(const void *arr, uint32_t arr_len, size_t cell_size, uint8_t *buf, size_t buf_len, size_t *written) {
-    size_t array_size = arr_len * cell_size;
-    size_t total_written = sizeof(uint32_t) + array_size;
+chrpc_status_t chrpc_block_value_to_buffer(chrpc_block_value_t block, bool len_prefix, uint8_t *buf, size_t buf_len, size_t *written) {
+    size_t total_written = 0;
 
-    if (buf_len < total_written) {
+    if (len_prefix) {
+        if (buf_len < sizeof(uint32_t)) {
+            return CHRPC_BUFFER_TOO_SMALL;
+        }
+
+        *(uint32_t *)buf = block.num_cells;
+
+        total_written += sizeof(uint32_t);
+    }
+
+    size_t arr_size = block.num_cells * block.cell_size;
+    if (buf_len < total_written + arr_size) {
         return CHRPC_BUFFER_TOO_SMALL;
     }
 
-    *(uint32_t *)buf = arr_len;
-    void *array_section = (void *)(((uint32_t *)buf) + 1);
-    memcpy(array_section, arr, array_size);
-    *written = total_written;
+    memcpy(buf + total_written, block.block, arr_size);
+    total_written += arr_size; 
 
+    *written = total_written;
     return CHRPC_SUCCESS;
 }
 
-// Just like with equals, this is the case where iv has type ARRAY(ct)
-static chrpc_status_t chrpc_inner_array_value_to_buffer(const chrpc_type_t *ct, const chrpc_inner_value_t *iv, uint8_t *buf, size_t buf_len, size_t *written) {
-    size_t total_written;
-
-    switch (ct->type_id) {
-        case CHRPC_BYTE_TID:
-            return chrpc_block_to_buffer(iv->b8_arr, iv->array_len, sizeof(uint8_t), buf, buf_len, written);
-        case CHRPC_UINT16_TID:
-            return chrpc_block_to_buffer(iv->u16_arr, iv->array_len, sizeof(uint16_t), buf, buf_len, written);
-        case CHRPC_UINT32_TID:
-            return chrpc_block_to_buffer(iv->u32_arr, iv->array_len, sizeof(uint32_t), buf, buf_len, written);
-        case CHRPC_UINT64_TID:
-            return chrpc_block_to_buffer(iv->u64_arr, iv->array_len, sizeof(uint64_t), buf, buf_len, written);
-        case CHRPC_INT16_TID:
-            return chrpc_block_to_buffer(iv->i16_arr, iv->array_len, sizeof(int16_t), buf, buf_len, written);
-        case CHRPC_INT32_TID:
-            return chrpc_block_to_buffer(iv->i32_arr, iv->array_len, sizeof(int32_t), buf, buf_len, written);
-        case CHRPC_INT64_TID:
-            return chrpc_block_to_buffer(iv->i64_arr, iv->array_len, sizeof(int64_t), buf, buf_len, written);
-
-        // Array of strings is kinda unique because strings are seen as primitive yet don't have a fixed size.
-        case CHRPC_STRING_TID:
-            if (buf_len < sizeof(uint32_t)) {
-                return CHRPC_BUFFER_TOO_SMALL;
-            }
-
-            *(uint32_t *)buf = iv->array_len;
-            total_written = sizeof(uint32_t);
-
-            for (size_t i = 0; i < iv->array_len; i++) {
-                const char *cell_str = iv->str_arr[i];
-                size_t cell_str_len = strlen(cell_str);
-
-                size_t w;
-                chrpc_status_t cs = chrpc_block_to_buffer(cell_str, cell_str_len, sizeof(char), buf + total_written, buf_len - total_written, &w);
-                if (cs != CHRPC_SUCCESS) {
-                    return cs;
-                }
-
-                total_written += w;
-            }
-
-            *written = total_written;
-            return CHRPC_SUCCESS;
-            
-
-        // Composite types are stored in array_entries.
-        case CHRPC_ARRAY_TID:
-        case CHRPC_STRUCT_TID:
-            if (buf_len < sizeof(uint32_t)) {
-                return CHRPC_BUFFER_TOO_SMALL;
-            }
-
-            *(uint32_t *)buf = iv->array_len;
-            total_written = sizeof(uint32_t);
-
-            for (size_t i = 0; i < iv->array_len; i++) {
-                size_t w;
-                chrpc_status_t cs = chrpc_inner_value_to_buffer(ct, iv->array_entries[i], buf + total_written, buf_len - total_written, &w);
-                if (cs != CHRPC_SUCCESS) {
-                    return cs;
-                }
-
-                total_written += w;
-            }
-
-            *written = total_written;
-            return CHRPC_SUCCESS;
-
-        default:
-            return CHRPC_MALFORMED_TYPE;
-    }
-}
-
-#define IV_NUMERIC_TO_BUFFER(type, val, b, bl, w) \
-    do { \
-        size_t __s = sizeof(type); \
-        if (bl < __s) { \
-            return CHRPC_BUFFER_TOO_SMALL; \
-        } \
-        *(type *)(b) = val; \
-        *(w) = __s; \
-        return CHRPC_SUCCESS; \
-    } while (0)
-
 chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_inner_value_t *iv, uint8_t *buf, size_t buf_len, size_t *written) {
-    size_t s_len;
     size_t total_written;
+    chrpc_block_value_t block;
+    size_t w;
 
-    switch (ct->type_id) {
-        case CHRPC_BYTE_TID:
-            IV_NUMERIC_TO_BUFFER(uint8_t, iv->b8, buf, buf_len, written);
+    // Blockable values already kinda exist in their serialized form.
+    // (Kinda the point of blockable values)
+    // All we need to know, is whether we should add the length prefix or not.
 
-        case CHRPC_UINT16_TID:
-            IV_NUMERIC_TO_BUFFER(uint16_t, iv->u16, buf, buf_len, written);
+    if (chrpc_type_is_blockable(ct)) {
+        block = chrpc_inner_value_to_block_value(ct, (chrpc_inner_value_t *)iv);
+        bool len_prefix = ct->type_id == CHRPC_STRING_TID || ct->type_id == CHRPC_ARRAY_TID;
+        return chrpc_block_value_to_buffer(block, len_prefix, buf, buf_len, written);
+    }
 
-        case CHRPC_UINT32_TID:
-            IV_NUMERIC_TO_BUFFER(uint32_t, iv->u32, buf, buf_len, written);
+    // Finally, we have a non-blockable type. Either an array of strings, a struct, or an array of 
+    // composites.
 
-        case CHRPC_UINT64_TID:
-            IV_NUMERIC_TO_BUFFER(uint64_t, iv->u64, buf, buf_len, written);
+    if (ct->type_id == CHRPC_STRUCT_TID) {
+        total_written = 0;
 
-        case CHRPC_INT16_TID:
-            IV_NUMERIC_TO_BUFFER(int16_t, iv->i16, buf, buf_len, written);
+        for (uint8_t i = 0; i < ct->struct_fields_types->num_fields; i++) {
+            const chrpc_type_t *ft = ct->struct_fields_types->field_types[i];
+            const chrpc_inner_value_t *fv = iv->struct_entries[i]; 
 
-        case CHRPC_INT32_TID:
-            IV_NUMERIC_TO_BUFFER(int32_t, iv->i32, buf, buf_len, written);
+            chrpc_status_t field_status = chrpc_inner_value_to_buffer(ft, fv, buf + total_written, buf_len - total_written, &w);
 
-        case CHRPC_INT64_TID:
-            IV_NUMERIC_TO_BUFFER(int64_t, iv->i64, buf, buf_len, written);
-
-        case CHRPC_STRING_TID:
-            return chrpc_block_to_buffer(iv->str, strlen(iv->str), sizeof(char), buf, buf_len, written);
-
-        case CHRPC_ARRAY_TID:
-            return chrpc_inner_array_value_to_buffer(ct->array_cell_type, iv, buf, buf_len, written);
-
-        case CHRPC_STRUCT_TID:
-            total_written = 0;
-            for (size_t i = 0; i < ct->struct_fields_types->num_fields; i++) {
-                const chrpc_type_t *field_type = ct->struct_fields_types->field_types[i];
-                const chrpc_inner_value_t *field_iv = iv->struct_entries[i];
-
-                size_t w;
-                chrpc_status_t field_status = chrpc_inner_value_to_buffer(field_type, field_iv, 
-                        buf + total_written, buf_len - total_written, &w);
-
-                if (field_status != CHRPC_SUCCESS) {
-                    return field_status;
-                }
-
-                total_written += w;
+            if (field_status != CHRPC_SUCCESS) {
+                return field_status;
             }
 
-            *written = total_written;
-            return CHRPC_SUCCESS;
+            total_written += w;
+        }
 
-        default:
-            return CHRPC_MALFORMED_TYPE;
+        *written = total_written;
+        return CHRPC_SUCCESS;
     }
+
+    // Ok, now we must be working with an array of strings or an array of composites.
+
+    if (buf_len < sizeof(uint32_t)) {
+        return CHRPC_BUFFER_TOO_SMALL;
+    }
+
+    *(uint32_t *)buf = iv->array_len;
+
+    total_written = sizeof(uint32_t);
+
+    chrpc_status_t cell_status;
+
+    // Array of stirngs.
+    if (ct->array_cell_type->type_id == CHRPC_STRING_TID) {
+        // Ok this is a little hacky, but each individual string in this array is 
+        // kinda a block. So we can populate the block value ourselves, then pass
+        // it to block_to_buffer.
+        for (uint32_t i = 0; i < iv->array_len; i++) {
+            block.block = iv->str_arr[i];
+            block.num_cells = (uint32_t)strlen(iv->str_arr[i]);
+            block.cell_size = 1;
+
+            cell_status = chrpc_block_value_to_buffer(block, true, buf + total_written, buf_len - total_written, &w);
+            if (cell_status != CHRPC_SUCCESS) {
+                return cell_status;
+            }
+            total_written += w;
+        }
+
+        *written = total_written;
+        return CHRPC_SUCCESS;
+    }
+
+    // Array of composites.
+
+    for (uint32_t i = 0; i < iv->array_len; i++) {
+        cell_status = chrpc_inner_value_to_buffer(ct->array_cell_type, iv->array_entries[i], 
+                buf + total_written, buf_len - total_written, &w);
+        if (cell_status != CHRPC_SUCCESS) {
+            return cell_status;
+        }
+        total_written += w;
+    }
+
+    *written = total_written;
+    return CHRPC_SUCCESS;
 }
+
