@@ -91,19 +91,27 @@ static chrpc_block_value_t chrpc_inner_value_to_block_value(const chrpc_type_t *
 }
 
 void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
-    if (t->type_id == CHRPC_STRING_TID) {
-        safe_free(iv->str);
+    if (chrpc_type_is_blockable(t)) {
+        // Remember, numeric arrays and strings both live in dynamic memory.
+        // We are responsible for freeing these blocks.
+        bool dynamic = t->type_id == CHRPC_ARRAY_TID || t->type_id == CHRPC_STRING_TID;
+        if (dynamic) {
+            chrpc_block_value_t block = chrpc_inner_value_to_block_value(t, iv);
+
+            if (block.block) {
+                safe_free(block.block);
+            }
+        }
+
+        // Otherwise, the block just lives inside the iv itself, i.e. a numeric value.
+        // There is no dynamic buffer to free in this case.
+
         safe_free(iv);
 
         return;
     }
 
-    if (chrpc_type_is_primitive(t)) {
-        // Non string primitive. (Do nothing)
-        safe_free(iv);
-
-        return;
-    }
+    // We must now either be working with a struct, an array of composites, or an array of strings.
 
     if (t->type_id == CHRPC_STRUCT_TID) {
         chrpc_struct_fields_types_t *struct_fields = t->struct_fields_types;
@@ -120,7 +128,7 @@ void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
         return;
     }
 
-    // If we make it here, we must be working with an array type!
+    // If we make it here, we must be working with an array of strings, or an array of composites.
     
     const chrpc_type_t *cell_type = t->array_cell_type;
 
@@ -131,18 +139,6 @@ void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
         }
         if (iv->str_arr) {
             safe_free(iv->str_arr);
-        }
-        safe_free(iv);
-
-        return;
-    }
-    
-    // Array of non-string primitives can be turned into a block which
-    // is gauranteed to point to dynamic memory.
-    if (chrpc_type_is_primitive(cell_type)) {
-        chrpc_block_value_t block = chrpc_inner_value_to_block_value(t, iv);
-        if (block.block) {
-            safe_free(block.block);
         }
         safe_free(iv);
 
@@ -614,7 +610,6 @@ static bool chrpc_inner_value_equals(const chrpc_type_t *ct, const chrpc_inner_v
     return true;
 }
 
-
 bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1) {
     if (cv0 == cv1) {
         return true;
@@ -630,6 +625,8 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1) {
 
     return chrpc_inner_value_equals(cv0->type, cv0->value, cv1->value);
 }
+
+// Serialization Functions!
 
 chrpc_status_t chrpc_block_value_to_buffer(chrpc_block_value_t block, bool len_prefix, uint8_t *buf, size_t buf_len, size_t *written) {
     size_t total_written = 0;
