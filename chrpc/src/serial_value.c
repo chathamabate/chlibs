@@ -9,7 +9,102 @@
 #include <string.h>
 #include <stdio.h>
 
+// NOTE: Block values only exists for the following types.
+// numerics, numeric arrays, and strings.
+// Arrays of strings, Arrays of composites, and Structs CANNOT be converted to a block value.
+typedef struct _chrpc_block_value_t {
+    void *block;
+    size_t cell_size;
+    uint32_t num_cells;
+} chrpc_block_value_t;
+
+static bool chrpc_type_is_blockable(const chrpc_type_t *ct) {
+    return chrpc_type_id_is_primitive(ct->type_id) || 
+        (ct->type_id == CHRPC_ARRAY_TID && 
+         chrpc_type_id_is_primitive(ct->array_cell_type->type_id) && ct->array_cell_type->type_id != CHRPC_STRING_TID);
+}
+
+static chrpc_block_value_t chrpc_inner_array_value_to_block_value(const chrpc_type_t *ct, chrpc_inner_value_t *iv) {
+    switch (ct->type_id) {
+    case CHRPC_BYTE_TID:
+        return (chrpc_block_value_t){.block = (iv->b8_arr), .cell_size = sizeof(uint8_t), .num_cells = iv->array_len};
+
+    case CHRPC_INT16_TID:
+        return (chrpc_block_value_t){.block = (iv->i16_arr), .cell_size = sizeof(uint16_t), .num_cells = iv->array_len};
+    case CHRPC_INT32_TID:
+        return (chrpc_block_value_t){.block = (iv->i32_arr), .cell_size = sizeof(uint32_t), .num_cells = iv->array_len};
+    case CHRPC_INT64_TID:
+        return (chrpc_block_value_t){.block = (iv->i64_arr), .cell_size = sizeof(uint64_t), .num_cells = iv->array_len};
+
+    case CHRPC_UINT16_TID:
+        return (chrpc_block_value_t){.block = (iv->u16_arr), .cell_size = sizeof(uint16_t), .num_cells = iv->array_len};
+    case CHRPC_UINT32_TID:
+        return (chrpc_block_value_t){.block = (iv->u32_arr), .cell_size = sizeof(uint32_t), .num_cells = iv->array_len};
+    case CHRPC_UINT64_TID:
+        return (chrpc_block_value_t){.block = (iv->u64_arr), .cell_size = sizeof(uint64_t), .num_cells = iv->array_len};
+
+    // Arrays of these types cannot be interpreted as blocks.
+    case CHRPC_STRING_TID:
+    case CHRPC_STRUCT_TID:
+    case CHRPC_ARRAY_TID:
+        return (chrpc_block_value_t){.block = NULL};
+
+    // Shouldn't make it here.
+    default:
+        return (chrpc_block_value_t){.block = NULL};
+    }
+
+}
+
+static chrpc_block_value_t chrpc_inner_value_to_block_value(const chrpc_type_t *ct, chrpc_inner_value_t *iv) {
+    switch (ct->type_id) {
+    case CHRPC_BYTE_TID:
+        return (chrpc_block_value_t){.block = &(iv->b8), .cell_size = sizeof(uint8_t), .num_cells = 1};
+
+    case CHRPC_INT16_TID:
+        return (chrpc_block_value_t){.block = &(iv->i16), .cell_size = sizeof(uint16_t), .num_cells = 1};
+    case CHRPC_INT32_TID:
+        return (chrpc_block_value_t){.block = &(iv->i32), .cell_size = sizeof(uint32_t), .num_cells = 1};
+    case CHRPC_INT64_TID:
+        return (chrpc_block_value_t){.block = &(iv->i64), .cell_size = sizeof(uint64_t), .num_cells = 1};
+
+    case CHRPC_UINT16_TID:
+        return (chrpc_block_value_t){.block = &(iv->u16), .cell_size = sizeof(uint16_t), .num_cells = 1};
+    case CHRPC_UINT32_TID:
+        return (chrpc_block_value_t){.block = &(iv->u32), .cell_size = sizeof(uint32_t), .num_cells = 1};
+    case CHRPC_UINT64_TID:
+        return (chrpc_block_value_t){.block = &(iv->u64), .cell_size = sizeof(uint64_t), .num_cells = 1};
+
+    case CHRPC_STRING_TID:
+        return (chrpc_block_value_t){.block = iv->str, .cell_size = sizeof(char), .num_cells = strlen(iv->str)};
+
+    case CHRPC_STRUCT_TID:
+        return (chrpc_block_value_t){.block = NULL};
+
+    case CHRPC_ARRAY_TID:
+        return chrpc_inner_array_value_to_block_value(ct->array_cell_type, iv);
+
+    // Shouldn't make it here.
+    default:
+        return (chrpc_block_value_t){.block = NULL};
+    }
+}
+
 void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
+    if (t->type_id == CHRPC_STRING_TID) {
+        safe_free(iv->str);
+        safe_free(iv);
+
+        return;
+    }
+
+    if (chrpc_type_is_primitive(t)) {
+        // Non string primitive. (Do nothing)
+        safe_free(iv);
+
+        return;
+    }
+
     if (t->type_id == CHRPC_STRUCT_TID) {
         chrpc_struct_fields_types_t *struct_fields = t->struct_fields_types;
 
@@ -17,77 +112,50 @@ void delete_chrpc_inner_value(const chrpc_type_t *t, chrpc_inner_value_t *iv) {
             chrpc_type_t *field_type = struct_fields->field_types[i]; 
             delete_chrpc_inner_value(field_type, iv->struct_entries[i]);
         }
+
+        // Remember, we can't have an empty struct!
         safe_free(iv->struct_entries);
-    } else if (t->type_id == CHRPC_ARRAY_TID) {
-        chrpc_type_t *cell_type = t->array_cell_type;
+        safe_free(iv);
 
-        switch (cell_type->type_id) {
-            case CHRPC_BYTE_TID:
-                if (iv->b8_arr) {
-                    safe_free(iv->b8_arr);
-                }
-                break;
+        return;
+    }
 
-            case CHRPC_UINT16_TID:
-                if (iv->u16_arr) {
-                    safe_free(iv->u16_arr);
-                }
-                break;
+    // If we make it here, we must be working with an array type!
+    
+    const chrpc_type_t *cell_type = t->array_cell_type;
 
-            case CHRPC_UINT32_TID:
-                if (iv->u32_arr) {
-                    safe_free(iv->u32_arr);
-                }
-                break;
-
-            case CHRPC_UINT64_TID:
-                if (iv->u64_arr) {
-                    safe_free(iv->u64_arr);
-                }
-                break;
-
-            case CHRPC_INT16_TID:
-                if (iv->i16_arr) {
-                    safe_free(iv->i16_arr);
-                }
-                break;
-
-            case CHRPC_INT32_TID:
-                if (iv->i32_arr) {
-                    safe_free(iv->i32_arr);
-                }
-                break;
-
-            case CHRPC_INT64_TID:
-                if (iv->i64_arr) {
-                    safe_free(iv->i64_arr);
-                }
-                break;
-
-            case CHRPC_STRING_TID:
-                for (uint32_t i = 0; i < iv->array_len; i++) {
-                    safe_free(iv->str_arr[i]);
-                }
-
-                if (iv->str_arr) {
-                    safe_free(iv->str_arr);
-                }
-                break;
-
-            // Composite Types! (Array Recursive Case)
-            case CHRPC_ARRAY_TID:
-            case CHRPC_STRUCT_TID:
-                for (uint32_t i = 0; i < iv->array_len; i++) {
-                    delete_chrpc_inner_value(cell_type, iv->array_entries[i]);
-                }
-
-                if (iv->array_entries) {
-                    safe_free(iv->array_entries);
-                }
-                break;
+    // Remember, string array is kinda unique.
+    if (cell_type->type_id == CHRPC_STRING_TID) {
+        for (uint32_t i = 0; i < iv->array_len; i++) {
+            safe_free(iv->str_arr[i]);
         }
-    } else if (t->type_id == CHRPC_STRING_TID) {
-        safe_free(iv->str);
+        if (iv->str_arr) {
+            safe_free(iv->str_arr);
+        }
+        safe_free(iv);
+
+        return;
+    }
+    
+    // Array of non-string primitives can be turned into a block which
+    // is gauranteed to point to dynamic memory.
+    if (chrpc_type_is_primitive(cell_type)) {
+        chrpc_block_value_t block = chrpc_inner_value_to_block_value(t, iv);
+        if (block.block) {
+            safe_free(block.block);
+        }
+        safe_free(iv);
+
+        return;
+    }
+
+    // Finally, Array of composites!
+    for (uint32_t i = 0; i < iv->array_len; i++) {
+        delete_chrpc_inner_value(cell_type, iv->array_entries[i]);
+    }
+
+    if (iv->array_entries) {
+        safe_free(iv->array_entries);
     }
 
     safe_free(iv);
@@ -483,107 +551,67 @@ chrpc_value_t *_new_chrpc_struct_value_va(int dummy,...) {
     return new_chrpc_struct_value(arr, len);
 }
 
-static bool chrpc_inner_array_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1);
-static bool chrpc_inner_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1);
-
-// Leaving this as a macro to account for potential padding between numeric values.
-#define CMP_IV_ARR(arr1, arr2, len) \
-    do { \
-        for (uint32_t i = 0; i < len; i++) { \
-            if (arr1[i] != arr2[i])  { \
-                return false; \
-            } \
-        } \
-        return true; \
-    } while (0)
-
-// Expects iv0 and iv1 are non NULL inner values with array types having cell type of ct.
-static bool chrpc_inner_array_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1) {
-    if (iv0->array_len != iv1->array_len) {
-        return false;
-    }
-
-    size_t len = iv0->array_len;
-
-    switch (ct->type_id) {
-    case CHRPC_BYTE_TID:
-        CMP_IV_ARR(iv0->b8_arr, iv1->b8_arr, len);
-    case CHRPC_INT16_TID:
-        CMP_IV_ARR(iv0->i16_arr, iv1->i16_arr, len);
-    case CHRPC_INT32_TID:
-        CMP_IV_ARR(iv0->i32_arr, iv1->i32_arr, len);
-    case CHRPC_INT64_TID:
-        CMP_IV_ARR(iv0->i64_arr, iv1->i64_arr, len);
-    case CHRPC_UINT16_TID:
-        CMP_IV_ARR(iv0->u16_arr, iv1->u16_arr, len);
-    case CHRPC_UINT32_TID:
-        CMP_IV_ARR(iv0->u32_arr, iv1->u32_arr, len);
-    case CHRPC_UINT64_TID:
-        CMP_IV_ARR(iv0->u64_arr, iv1->u64_arr, len);
-
-    case CHRPC_STRING_TID:
-        for (size_t i = 0; i < len; i++) {
-            if (strcmp(iv0->str_arr[i], iv1->str_arr[i])) {
-                return false;
-            }
-        }
-        return true;
-
-    // Composite array!
-    case CHRPC_STRUCT_TID:
-    case CHRPC_ARRAY_TID:
-        for (size_t i = 0; i < len; i++) {
-            if (!chrpc_inner_value_equals(ct, iv0->array_entries[i], iv1->array_entries[i])) {
-                return false;
-            }
-        }
-        return true;
-
-    // Shouldn't make it here.
-    default:
-        return false;
-    }
-}
 
 // This function assumes iv0 and iv1 have the same type ct, and that neither inner value is NULL.
 // (That is they belong to a valid chrpc_value_t object)
 static bool chrpc_inner_value_equals(const chrpc_type_t *ct, const chrpc_inner_value_t *iv0, const chrpc_inner_value_t *iv1) {
-    switch (ct->type_id) {
-    case CHRPC_BYTE_TID:
-        return iv0->b8 == iv1->b8;
-    case CHRPC_INT16_TID:
-        return iv0->i16 == iv1->i16;
-    case CHRPC_INT32_TID:
-        return iv0->i32 == iv1->i32;
-    case CHRPC_INT64_TID:
-        return iv0->i64 == iv1->i64;
-    case CHRPC_UINT16_TID:
-        return iv0->u16 == iv1->u16;
-    case CHRPC_UINT32_TID:
-        return iv0->u32 == iv1->u32;
-    case CHRPC_UINT64_TID:
-        return iv0->u64 == iv1->u64;
+    if (chrpc_type_is_blockable(ct)) {
+        chrpc_block_value_t block0 = chrpc_inner_value_to_block_value(ct, (chrpc_inner_value_t *)iv0);
+        chrpc_block_value_t block1 = chrpc_inner_value_to_block_value(ct, (chrpc_inner_value_t *)iv1);
+        
+        if (block0.num_cells != block1.num_cells) {
+            return false;
+        }
 
-    case CHRPC_STRING_TID:
-        return strcmp(iv0->str, iv1->str) == 0;
+        // Same types mean same cell sizes!
+        return memcmp(block0.block, block1.block, block0.cell_size * block0.num_cells) == 0;
+    }
 
-    case CHRPC_STRUCT_TID:
-        // Check every field plz.
-        for (size_t i = 0; i < ct->struct_fields_types->num_fields; i++) {
-            if (!chrpc_inner_value_equals(ct->struct_fields_types->field_types[i], 
-                        iv0->struct_entries[i], iv1->struct_entries[i])) {
+    // If not blockable we must have a Struct, an Array of Composites, or an Array of Strings.
+
+    if (ct->type_id == CHRPC_STRUCT_TID) {
+        for (uint8_t i = 0; i < ct->struct_fields_types->num_fields; i++) {
+            const chrpc_type_t *ft = ct->struct_fields_types->field_types[i];
+            const chrpc_inner_value_t *f0 = iv0->struct_entries[i];
+            const chrpc_inner_value_t *f1 = iv1->struct_entries[i];
+
+            if (!chrpc_inner_value_equals(ft, f0, f1)) {
                 return false;
             }
         }
+
         return true;
+    }
 
-    case CHRPC_ARRAY_TID:
-        return chrpc_inner_array_value_equals(ct->array_cell_type, iv0, iv1);
+    // If we make it here, we must be working with an array of composites or strings.
 
-    // Shouldn't make it here.
-    default:
+    const chrpc_type_t *cell_type = ct->array_cell_type;
+
+    if (iv0->array_len != iv1->array_len) {
         return false;
     }
+
+    const uint32_t arr_len = iv0->array_len;
+
+    if (cell_type->type_id == CHRPC_STRING_TID) {
+        for (uint32_t i = 0; i < arr_len; i++) {
+            if (strcmp(iv0->str_arr[i], iv1->str_arr[i])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Finally composites.
+
+    for (uint32_t i = 0; i < arr_len; i++) {
+        if (!chrpc_inner_value_equals(cell_type, iv0->array_entries[i], iv1->array_entries[i])) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 
