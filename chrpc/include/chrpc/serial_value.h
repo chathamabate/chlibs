@@ -45,6 +45,7 @@ typedef struct _chrpc_inner_value_t {
         uint64_t u64;
         uint64_t *u64_arr;
 
+        // A String will not be able to have a lenght greater than UINT32_MAX
         char *str;
         char **str_arr;
 
@@ -189,6 +190,13 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1);
 // Now for actual serialization and deserialization.
 
 // NOTE: We will assume this system is Little Endian.
+
+// Serialization Grammar
+//
+// Serial(Numeric Value V) = V
+// Serial(String Value V) = strlen(V), V[0], V[1], ..., V[strlen(V) - 1]    (No Null Terminator)
+// Serial(Struct Value V) = Serial(V.0), Serial(V.1), ..., Serial(V.(num fields - 1))
+// Serial(Array Value V)  = V.len, Serial(V[0]), Serial(V[1]), ..., Serial(V[V.len - 1)
 
 chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_inner_value_t *iv, uint8_t *buf, size_t buf_len, size_t *written);
 

@@ -639,10 +639,13 @@ chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_i
             IV_NUMERIC_TO_BUFFER(int64_t, iv->i64, buf, buf_len, written);
 
         case CHRPC_STRING_TID:
-            s_len = strlen(iv->str) + 1;
-            if (buf_len < s_len) {
+            s_len = strlen(iv->str);
+            if (buf_len < sizeof(uint32_t) + s_len) {
                 return CHRPC_BUFFER_TOO_SMALL;
             }
+
+            
+
 
             strcpy((char *)buf, iv->str);
             *written = s_len;
