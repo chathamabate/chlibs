@@ -45,7 +45,7 @@ typedef struct _chrpc_inner_value_t {
         uint64_t u64;
         uint64_t *u64_arr;
 
-        // A String will not be able to have a lenght greater than UINT32_MAX
+        // UB if a given string's length is larger than UINT32_MAX
         char *str;
         char **str_arr;
 
