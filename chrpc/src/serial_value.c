@@ -739,3 +739,109 @@ chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_i
     return CHRPC_SUCCESS;
 }
 
+// Might need to do a visitor type design again here...
+
+// This is a kinda hacky function.
+//
+// If len_prefix is false, this function assumes only 1 cell is being read, that value will be written directly to dest.
+// If len_prefix is true, this function assumes an array is being read, it will create a NEW array, copy the bytes, then
+// copy the arrays address into dest.
+//
+// This is similar to the block value, but in the from direction.
+//
+// NOTE: This should NEVER be used when working with composite types.
+static chrpc_status_t chrpc_copy_bytes_from_buffer(const uint8_t *buf, size_t buf_len, 
+        bool len_prefix, void *dest, size_t cell_size, size_t *cells_read) {
+    if (!len_prefix) {
+        if (buf_len < cell_size) {
+            return CHRPC_UNEXPECTED_END;
+        }
+
+        memcpy(dest, buf, cell_size);
+        *cells_read = 1;
+        return CHRPC_SUCCESS;
+    }
+
+    // We are reading an array (or a singular string)!    
+    if (buf_len < sizeof(uint32_t)) {
+        return CHRPC_UNEXPECTED_END;
+    }
+
+    size_t arr_len = *(uint32_t *)buf;
+
+    size_t rem_len = buf_len - sizeof(uint32_t);
+    const void *rem_buf = ((uint32_t *)buf) + 1;
+
+    size_t arr_size = arr_len * cell_size;
+
+    if (rem_len < arr_size) {
+        return CHRPC_UNEXPECTED_END;
+    }
+
+    void *arr = safe_malloc(arr_size);
+    memcpy(arr, rem_buf, arr_size);
+
+    *(void **)dest = arr;
+    *cells_read = arr_len;
+
+    return CHRPC_SUCCESS;
+}
+
+chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    chrpc_status_t status;
+    size_t cells_read = 0;
+
+    // Block value from buffer?
+    // What is the best way to do this....???
+
+    switch (ct->type_id) {
+    case CHRPC_BYTE_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->b8), sizeof(uint8_t), &cells_read);
+        *readden = cells_read * sizeof(uint8_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_INT16_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->i16), sizeof(int16_t), &cells_read);
+        *readden = cells_read * sizeof(int16_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_INT32_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->i32), sizeof(int32_t), &cells_read);
+        *readden = cells_read * sizeof(int32_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_INT64_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->i64), sizeof(int64_t), &cells_read);
+        *readden = cells_read * sizeof(int64_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_UINT16_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->u16), sizeof(uint16_t), &cells_read);
+        *readden = cells_read * sizeof(uint16_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_UINT32_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->u32), sizeof(uint32_t), &cells_read);
+        *readden = cells_read * sizeof(uint32_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_UINT64_TID:
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->u64), sizeof(uint64_t), &cells_read);
+        *readden = cells_read * sizeof(uint64_t); // Doing this even in error case just to make my life easier.
+        break;
+
+    case CHRPC_STRING_TID:
+        // Yeah, but what about the NULL terminator???
+        // Then what????
+        status = chrpc_copy_bytes_from_buffer(buf, buf_len, true, &(ivp->str), sizeof(char), &cells_read);
+
+    case CHRPC_STRUCT_TID:
+    case CHRPC_ARRAY_TID:
+
+    // Shouldn't make it here.
+    default:
+        return CHRPC_MALFORMED_TYPE;
+    }
+}
+
