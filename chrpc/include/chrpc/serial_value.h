@@ -194,7 +194,7 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1);
 // Serialization Grammar
 //
 // Serial(Numeric Value V) = V
-// Serial(String Value V) = strlen(V), V[0], V[1], ..., V[strlen(V) - 1]    (No Null Terminator)
+// Serial(String Value V) = strlen(V), V[0], V[1], ..., V[strlen(V) - 1], '\0' (NULL Term is included)
 // Serial(Struct Value V) = Serial(V.0), Serial(V.1), ..., Serial(V.(num fields - 1))
 // Serial(Array Value V)  = V.len, Serial(V[0]), Serial(V[1]), ..., Serial(V[V.len - 1)
 

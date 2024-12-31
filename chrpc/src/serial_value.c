@@ -76,7 +76,7 @@ static chrpc_block_value_t chrpc_inner_value_to_block_value(const chrpc_type_t *
         return (chrpc_block_value_t){.block = &(iv->u64), .cell_size = sizeof(uint64_t), .num_cells = 1};
 
     case CHRPC_STRING_TID:
-        return (chrpc_block_value_t){.block = iv->str, .cell_size = sizeof(char), .num_cells = strlen(iv->str)};
+        return (chrpc_block_value_t){.block = iv->str, .cell_size = sizeof(char), .num_cells = strlen(iv->str) + 1};
 
     case CHRPC_STRUCT_TID:
         return (chrpc_block_value_t){.block = NULL};
@@ -710,7 +710,7 @@ chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_i
         // it to block_to_buffer.
         for (uint32_t i = 0; i < iv->array_len; i++) {
             block.block = iv->str_arr[i];
-            block.num_cells = (uint32_t)strlen(iv->str_arr[i]);
+            block.num_cells = (uint32_t)(strlen(iv->str_arr[i]) + 1);
             block.cell_size = 1;
 
             cell_status = chrpc_block_value_to_buffer(block, true, buf + total_written, buf_len - total_written, &w);
@@ -792,9 +792,6 @@ chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner
     chrpc_status_t status;
     size_t cells_read = 0;
 
-    // Block value from buffer?
-    // What is the best way to do this....???
-
     switch (ct->type_id) {
     case CHRPC_BYTE_TID:
         status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->b8), sizeof(uint8_t), &cells_read);
@@ -832,12 +829,15 @@ chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner
         break;
 
     case CHRPC_STRING_TID:
-        // Yeah, but what about the NULL terminator???
-        // Then what????
+        // NOTE: this only works because we serial the NULL terminator.
         status = chrpc_copy_bytes_from_buffer(buf, buf_len, true, &(ivp->str), sizeof(char), &cells_read);
+        *readden = cells_read * sizeof(char);
+        break;
 
     case CHRPC_STRUCT_TID:
+
     case CHRPC_ARRAY_TID:
+
 
     // Shouldn't make it here.
     default:
