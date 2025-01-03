@@ -106,7 +106,6 @@ extern chrpc_type_t * const CHRPC_STRING_T;
 // Returns NULL if given type ID is not primitive.
 chrpc_type_t *new_chrpc_primitive_type_from_id(chrpc_type_id_t tid);
 
-
 // NOTE: Just like with the JSON library, these args for the composite types
 // are owned by the returned type.
 //

@@ -9,20 +9,67 @@
 #include <string.h>
 #include <stdio.h>
 
-// NOTE: Block values only exists for the following types.
-// numerics, numeric arrays, and strings.
-// Arrays of strings, Arrays of composites, and Structs CANNOT be converted to a block value.
-typedef struct _chrpc_block_value_t {
-    void *block;
-    size_t cell_size;
-    uint32_t num_cells;
-} chrpc_block_value_t;
-
+// A "Blockable" Type is a type who's value will always exist in its serialized form.
+// For example an INT16 is blockable since to serial an integer, its value is just copied directly to the buffer.
+// Since Numeric arrays and strings are also stored densely, these are also blockable.
+//
+// NOTE: The point of blockable types is to make serilization code less repetitive. All blockable values require
+// just a single memcpy to serialize/deserialize.
 static bool chrpc_type_is_blockable(const chrpc_type_t *ct) {
     return chrpc_type_id_is_primitive(ct->type_id) || 
         (ct->type_id == CHRPC_ARRAY_TID && 
          chrpc_type_id_is_primitive(ct->array_cell_type->type_id) && ct->array_cell_type->type_id != CHRPC_STRING_TID);
 }
+
+// This will return 0 if the give type is not blockable.
+static size_t chrpc_blockable_type_cell_size(const chrpc_type_t *ct) {
+    const chrpc_type_t *arr_cell_type;
+
+    switch (ct->type_id) {
+
+    // Primitive types.
+    case CHRPC_BYTE_TID:
+        return sizeof(uint8_t);
+    case CHRPC_INT16_TID:
+        return sizeof(int16_t);
+    case CHRPC_INT32_TID:
+        return sizeof(int32_t);
+    case CHRPC_INT64_TID:
+        return sizeof(int64_t);
+    case CHRPC_UINT16_TID:
+        return sizeof(uint16_t);
+    case CHRPC_UINT32_TID:
+        return sizeof(uint32_t);
+    case CHRPC_UINT64_TID: 
+        return sizeof(uint64_t);
+
+    case CHRPC_STRING_TID:
+        return sizeof(char);
+
+    case CHRPC_ARRAY_TID:
+        arr_cell_type = ct->array_cell_type;
+        if (chrpc_type_is_primitive(arr_cell_type) && arr_cell_type->type_id != CHRPC_STRING_TID) {
+            return chrpc_blockable_type_cell_size(arr_cell_type);
+        }
+        // Arrays of strings and composites are not blockable!
+        return 0;
+        
+    case CHRPC_STRUCT_TID:
+        return 0;
+
+    default:
+        return 0;
+    }
+}
+
+// The below two functions are for getting pointers to the actual blocks themselves.
+// This is extremely helpful for serialization and somewhat helpful for deserialization.
+
+typedef struct _chrpc_block_value_t {
+    void *block;
+    size_t cell_size;
+    uint32_t num_cells;
+} chrpc_block_value_t;
 
 static chrpc_block_value_t chrpc_inner_array_value_to_block_value(const chrpc_type_t *ct, chrpc_inner_value_t *iv) {
     switch (ct->type_id) {
@@ -739,109 +786,150 @@ chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_i
     return CHRPC_SUCCESS;
 }
 
-// Might need to do a visitor type design again here...
+// Assumes ct is primitive, but not a string.
+static chrpc_status_t chrpc_numeric_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    chrpc_block_value_t block = chrpc_inner_value_to_block_value(ct, ivp);
 
-// This is a kinda hacky function.
-//
-// If len_prefix is false, this function assumes only 1 cell is being read, that value will be written directly to dest.
-// If len_prefix is true, this function assumes an array is being read, it will create a NEW array, copy the bytes, then
-// copy the arrays address into dest.
-//
-// This is similar to the block value, but in the from direction.
-//
-// NOTE: This should NEVER be used when working with composite types.
-static chrpc_status_t chrpc_copy_bytes_from_buffer(const uint8_t *buf, size_t buf_len, 
-        bool len_prefix, void *dest, size_t cell_size, size_t *cells_read) {
-    if (!len_prefix) {
-        if (buf_len < cell_size) {
-            return CHRPC_UNEXPECTED_END;
-        }
-
-        memcpy(dest, buf, cell_size);
-        *cells_read = 1;
-        return CHRPC_SUCCESS;
+    if (buf_len < block.cell_size) {
+        safe_free(ivp);
+        return CHRPC_UNEXPECTED_END;
     }
 
-    // We are reading an array (or a singular string)!    
+    memcpy(block.block, buf, block.cell_size);
+
+    *iv = ivp;
+    *readden = block.cell_size;
+
+    return CHRPC_SUCCESS;
+}
+
+// A singular string or numeric array.
+static chrpc_status_t chrpc_block_array_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
     if (buf_len < sizeof(uint32_t)) {
         return CHRPC_UNEXPECTED_END;
     }
 
-    size_t arr_len = *(uint32_t *)buf;
+    uint32_t num_cells = *(uint32_t *)buf;
+    size_t cell_size = chrpc_blockable_type_cell_size(ct);
 
     size_t rem_len = buf_len - sizeof(uint32_t);
-    const void *rem_buf = ((uint32_t *)buf) + 1;
+    const uint8_t *rem_buf = buf + sizeof(uint32_t);
 
-    size_t arr_size = arr_len * cell_size;
+    size_t arr_bytes = cell_size * num_cells;
 
-    if (rem_len < arr_size) {
+    if (rem_len < arr_bytes) {
         return CHRPC_UNEXPECTED_END;
     }
 
-    void *arr = safe_malloc(arr_size);
-    memcpy(arr, rem_buf, arr_size);
+    void *arr = safe_malloc(arr_bytes);
+    memcpy(arr, rem_buf, arr_bytes);
 
-    *(void **)dest = arr;
-    *cells_read = arr_len;
+    // We have successfully read from the buffer.
+    // We can write readden here.
+    *readden = sizeof(uint32_t) + arr_bytes;
+
+    chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+
+    if (ct->type_id == CHRPC_STRING_TID) {
+        ivp->str = (char *)arr;
+        *iv = ivp;
+
+        return CHRPC_SUCCESS;
+    }
+
+    // If we make it here, we must be working with a numeric array.
+
+    switch (ct->array_cell_type->type_id) {
+    case CHRPC_BYTE_TID:
+        ivp->b8_arr = (uint8_t *)arr;
+        break;
+    case CHRPC_INT16_TID:
+        ivp->i16_arr = (int16_t *)arr;
+        break;
+    case CHRPC_INT32_TID:
+        ivp->i32_arr = (int32_t *)arr;
+        break;
+    case CHRPC_INT64_TID:
+        ivp->i64_arr = (int64_t *)arr;
+        break;
+    case CHRPC_UINT16_TID:
+        ivp->u16_arr = (uint16_t *)arr;
+        break;
+    case CHRPC_UINT32_TID:
+        ivp->u32_arr = (uint32_t *)arr;
+        break;
+    case CHRPC_UINT64_TID:
+        ivp->u64_arr = (uint64_t *)arr;
+        break;
+    default:
+        break; // SHOULD NEVER MAKE IT HERE.
+    }
+
+    *iv = ivp;
 
     return CHRPC_SUCCESS;
 }
 
 chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
-    chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
-    chrpc_status_t status;
-    size_t cells_read = 0;
+    if (chrpc_type_is_blockable(ct)) {
+        // Serialized dense array case. (Numeric arrays or strings)
+        if (ct->type_id == CHRPC_STRING_TID || ct->type_id == CHRPC_ARRAY_TID) {
+            return chrpc_block_array_inner_value_from_buffer(ct, iv, buf, buf_len, readden);
+        }
 
-    switch (ct->type_id) {
-    case CHRPC_BYTE_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->b8), sizeof(uint8_t), &cells_read);
-        *readden = cells_read * sizeof(uint8_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_INT16_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->i16), sizeof(int16_t), &cells_read);
-        *readden = cells_read * sizeof(int16_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_INT32_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->i32), sizeof(int32_t), &cells_read);
-        *readden = cells_read * sizeof(int32_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_INT64_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->i64), sizeof(int64_t), &cells_read);
-        *readden = cells_read * sizeof(int64_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_UINT16_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->u16), sizeof(uint16_t), &cells_read);
-        *readden = cells_read * sizeof(uint16_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_UINT32_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->u32), sizeof(uint32_t), &cells_read);
-        *readden = cells_read * sizeof(uint32_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_UINT64_TID:
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, false, &(ivp->u64), sizeof(uint64_t), &cells_read);
-        *readden = cells_read * sizeof(uint64_t); // Doing this even in error case just to make my life easier.
-        break;
-
-    case CHRPC_STRING_TID:
-        // NOTE: this only works because we serial the NULL terminator.
-        status = chrpc_copy_bytes_from_buffer(buf, buf_len, true, &(ivp->str), sizeof(char), &cells_read);
-        *readden = cells_read * sizeof(char);
-        break;
-
-    case CHRPC_STRUCT_TID:
-
-    case CHRPC_ARRAY_TID:
-
-
-    // Shouldn't make it here.
-    default:
-        return CHRPC_MALFORMED_TYPE;
+        // Numeric case.
+        return chrpc_numeric_inner_value_from_buffer(ct, iv, buf, buf_len, readden);
     }
+
+    // It's not blockable:
+    // Either a struct, an array of strings, or an array of composites.
+
+    size_t bytes_read = 0;
+
+    if (ct->type_id == CHRPC_STRUCT_TID) {
+        const uint32_t num_fields = ct->struct_fields_types->num_fields;
+        chrpc_inner_value_t **fields = (chrpc_inner_value_t **)
+            safe_malloc(sizeof(chrpc_inner_value_t *) * num_fields);
+
+        uint32_t fi = 0;
+        chrpc_status_t field_status;
+
+        for (fi = 0; fi < ct->struct_fields_types->num_fields; fi++) {
+            size_t field_read;
+            field_status = chrpc_inner_value_from_buffer(ct->struct_fields_types->field_types[fi], &(fields[fi]), 
+                    buf + bytes_read, buf_len - bytes_read, &field_read);
+
+            if (field_status != CHRPC_SUCCESS) {
+                break;
+            }
+
+            bytes_read += field_read;
+        }
+
+        if (field_status != CHRPC_SUCCESS) {
+            // Delete all correctly constructed inner values.
+            for (size_t i = 0; i < fi; i++) {
+                delete_chrpc_inner_value(ct->struct_fields_types->field_types[i], fields[i]); 
+            }
+            safe_free(fields);
+            return field_status;
+        }
+
+        chrpc_inner_value_t *struct_iv = (chrpc_inner_value_t *)
+            safe_malloc(sizeof(chrpc_inner_value_t));
+
+        struct_iv->struct_entries = fields;
+
+        *iv = struct_iv;
+        *readden = bytes_read;
+
+        return CHRPC_SUCCESS;
+    }
+
+    // Not a struct, must be an array!
+
+    // 
+    return CHRPC_SUCCESS;
 }
 
