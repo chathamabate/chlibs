@@ -383,6 +383,30 @@ static void test_chrpc_inner_value_to_buffer(void) {
             .exp_buf = { 0, 0, 0, 0 },
             .exp_len = 4 
         },
+        {
+            .val = new_chrpc_composite_empty_array_value(
+                new_chrpc_struct_type(CHRPC_BYTE_T)
+            ),
+            .exp_buf = { 0, 0, 0, 0 },
+            .exp_len = 4 
+        },
+        {
+            .val = new_chrpc_composite_nempty_array_value_va(
+                new_chrpc_struct_value_va(
+                    new_chrpc_b8_value(1),
+                    new_chrpc_b8_value(2)
+                ),
+                new_chrpc_struct_value_va(
+                    new_chrpc_b8_value(3),
+                    new_chrpc_b8_value(4)
+                ) 
+            ),
+            .exp_buf = { 
+                2, 0, 0, 0,
+                1, 2, 3, 4
+            },
+            .exp_len = 8 
+        },
 
     };
     size_t num_cases = sizeof(CASES) / sizeof(test_case_t);
@@ -404,6 +428,56 @@ static void test_chrpc_inner_value_to_buffer(void) {
         // Cleanup at the end.
         delete_chrpc_value(c.val);
     }
+}
+
+static void test_chrpc_big_inner_value_to_buffer(void) {
+    chrpc_value_t *v = new_chrpc_composite_nempty_array_value_va(
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Bobby"),
+            new_chrpc_str_value("Flay"),
+            new_chrpc_b8_array_value_va(1, 2, 3)
+        ),
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Mark"),
+            new_chrpc_str_value("David"),
+            new_chrpc_b8_array_value_va(1, 1, 1)
+        ),
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Alyssa"),
+            new_chrpc_str_value("Smith"),
+            new_chrpc_b8_array_value_va(4, 5)
+        ),
+        new_chrpc_struct_value_va(
+            new_chrpc_str_value("Larry"),
+            new_chrpc_str_value("Alm"),
+            new_chrpc_b8_array_value_va(0)
+        )
+    );
+
+    const uint8_t exp_buf[] = {
+        4, 0, 0, 0,
+
+        6, 0, 0, 0, 'B', 'o', 'b', 'b', 'y', 0,
+        5, 0, 0, 0, 'F', 'l', 'a', 'y', 0,
+        3, 0, 0, 0, 1, 2, 3,
+
+        5, 0, 0, 0, 'M', 'a', 'r', 'k', 0,
+        6, 0, 0, 0, 'D', 'a', 'v', 'i', 'd', 0,
+        3, 0, 0, 0, 1, 1, 1,
+
+        7, 0, 0, 0, 'A', 'l', 'y', 's', 's', 'a', 0,
+        6, 0, 0, 0, 'S', 'm', 'i', 't', 'h', 0,
+        2, 0, 0, 0, 4, 5,
+
+        6, 0, 0, 0, 'L', 'a', 'r', 'r', 'y', 0,
+        4, 0, 0, 0, 'A', 'l', 'm', 0,
+        0, 0, 0, 0,
+    };
+
+    uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
+    size_t written;
+
+    chrpc_status_t status;
 }
 
 void chrpc_serial_value_tests(void) {
