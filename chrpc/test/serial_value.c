@@ -566,6 +566,106 @@ static void test_chrpc_inner_value_to_buffer_failures(void) {
     }
 }
 
+static void test_chrpc_inner_value_from_buffer_failures(void) {
+    // All these cases will be buffers which are cut short.
+    // All cases should return unexpected end.
+    typedef struct {
+        chrpc_type_t *exp_type;
+        uint8_t buf[TEST_CHRPC_TEST_BUFFER_LEN];
+        size_t buf_len;
+    } test_case_t;
+
+    test_case_t CASES[] = {
+        {
+            .exp_type = CHRPC_INT16_T,
+            .buf = {
+                3
+            },
+            .buf_len = 1
+        },
+        {
+            .exp_type = CHRPC_INT32_T,
+            .buf = {
+                3, 3, 1
+            },
+            .buf_len = 3
+        },
+        {
+            .exp_type = CHRPC_STRING_T,
+            .buf = {
+                1, 0, 0
+            },
+            .buf_len = 3
+        },
+        {
+            .exp_type = CHRPC_STRING_T,
+            .buf = {
+                1, 0, 0, 0
+            },
+            .buf_len = 4
+        },
+        {
+            .exp_type = CHRPC_STRING_T,
+            .buf = {
+                3, 0, 0, 0, 'a', 'a'
+            },
+            .buf_len = 6
+        },
+        {
+            .exp_type = new_chrpc_array_type(CHRPC_INT16_T),
+            .buf = {
+                2, 0, 0, 0, 1, 0
+            },
+            .buf_len = 6
+        },
+        {
+            .exp_type = new_chrpc_array_type(new_chrpc_array_type(CHRPC_BYTE_T)),
+            .buf = {
+                3, 0, 0, 0,
+
+                2, 0, 0, 0, 1, 2,
+                3, 0, 0, 0, 1, 2, 3,
+                1, 0
+
+            },
+            .buf_len = 19
+        },
+        {
+            .exp_type = new_chrpc_struct_type(CHRPC_BYTE_T, CHRPC_INT16_T),
+            .buf = {
+                3, 0
+            },
+            .buf_len = 2
+        },
+        {
+            .exp_type = new_chrpc_array_type(new_chrpc_struct_type(CHRPC_STRING_T, CHRPC_BYTE_T)),
+            .buf = {
+                2, 0, 0, 0,
+
+                2, 0, 0, 0, 'b', 0, 
+                1,
+
+                4, 0, 0
+            },
+            .buf_len = 14
+        }
+    };
+
+    size_t num_cases = sizeof(CASES) / sizeof(test_case_t);
+
+    for (size_t i = 0; i < num_cases; i++) {
+        test_case_t c = CASES[i];
+
+        size_t readden;
+        chrpc_inner_value_t *iv;
+        chrpc_status_t status = 
+            chrpc_inner_value_from_buffer(c.exp_type, &iv, c.buf, c.buf_len, &readden);
+
+        TEST_ASSERT_TRUE(status == CHRPC_UNEXPECTED_END);
+        delete_chrpc_type(c.exp_type);
+    }
+}
+
 void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_simple_constructors);
     RUN_TEST(test_chrpc_value_simple_array_constructors);
@@ -576,4 +676,5 @@ void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_equals);
     RUN_TEST(test_chrpc_inner_value_to_and_from_buffer);
     RUN_TEST(test_chrpc_inner_value_to_buffer_failures);
+    RUN_TEST(test_chrpc_inner_value_from_buffer_failures);
 }
