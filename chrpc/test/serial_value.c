@@ -6,6 +6,8 @@
 #include "unity/unity.h"
 #include "unity/unity_internals.h"
 
+#define TEST_CHRPC_TEST_BUFFER_LEN 512
+
 static void test_chrpc_value_simple_constructors(void) {
     chrpc_value_t *cv;
 
@@ -322,6 +324,88 @@ static void test_chrpc_value_equals(void) {
     );
 }
 
+static void test_chrpc_inner_value_to_buffer(void) {
+    typedef struct {
+        chrpc_value_t *val;
+
+        uint8_t exp_buf[TEST_CHRPC_TEST_BUFFER_LEN];
+        size_t exp_len;
+    } test_case_t;
+
+    test_case_t CASES[] = {
+        {
+            .val = new_chrpc_b8_value(1),
+            .exp_buf = { 1 },
+            .exp_len = 1 
+        },
+        {
+            .val = new_chrpc_u32_value(256),
+            .exp_buf = { 0x0, 0x1, 0x0, 0x0 },
+            .exp_len = 4 
+        },
+        {
+            .val = new_chrpc_i64_value(-2),
+            .exp_buf = { 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
+            .exp_len = 8 
+        },
+        {
+            .val = new_chrpc_i16_array_value_va(1, 3, -1),
+            .exp_buf = { 3, 0x0, 0x0, 0x0, 1, 0x0, 3, 0x0, 0xFF, 0xFF },
+            .exp_len = 10 
+        },
+        {
+            .val = new_chrpc_str_value("Hello"),
+            .exp_buf = { 6, 0, 0, 0, 'H', 'e', 'l', 'l', 'o', 0 },
+            .exp_len = 10 
+        },
+        {
+            .val = new_chrpc_str_array_value_va(
+                "Hey", "Bye", "Yo"
+            ),
+            .exp_buf = { 
+                3, 0, 0, 0, 
+                4, 0, 0, 0, 'H', 'e', 'y',  0,
+                4, 0, 0, 0, 'B', 'y', 'e',  0,
+                3, 0, 0, 0, 'Y', 'o',  0,
+            },
+            .exp_len = 27
+        },
+        {
+            .val = new_chrpc_struct_value_va(
+                new_chrpc_str_value("Di"),
+                new_chrpc_u16_value(100)
+            ),
+            .exp_buf = { 3, 0, 0, 0, 'D', 'i', 0, 100, 0x0 },
+            .exp_len = 9 
+        },
+        {
+            .val = new_chrpc_i16_empty_array_value(),
+            .exp_buf = { 0, 0, 0, 0 },
+            .exp_len = 4 
+        },
+
+    };
+    size_t num_cases = sizeof(CASES) / sizeof(test_case_t);
+
+    for (size_t i = 0; i < num_cases; i++) {
+        test_case_t c = CASES[i];
+
+        size_t written;
+        uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
+
+        chrpc_status_t status = 
+            chrpc_inner_value_to_buffer(c.val->type, c.val->value, 
+                    act_buf, TEST_CHRPC_TEST_BUFFER_LEN, &written);
+
+        TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+        TEST_ASSERT_EQUAL_size_t(c.exp_len, written);
+        TEST_ASSERT_EQUAL_UINT8_ARRAY(c.exp_buf, act_buf, c.exp_len);
+
+        // Cleanup at the end.
+        delete_chrpc_value(c.val);
+    }
+}
+
 void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_simple_constructors);
     RUN_TEST(test_chrpc_value_simple_array_constructors);
@@ -330,4 +414,5 @@ void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_composite_array);
     RUN_TEST(test_chrpc_big_composite_value);
     RUN_TEST(test_chrpc_value_equals);
+    RUN_TEST(test_chrpc_inner_value_to_buffer);
 }

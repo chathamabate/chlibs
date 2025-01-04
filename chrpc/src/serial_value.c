@@ -804,13 +804,14 @@ static chrpc_status_t chrpc_numeric_inner_value_from_buffer(const chrpc_type_t *
     return CHRPC_SUCCESS;
 }
 
-// A singular string or numeric array.
-static chrpc_status_t chrpc_block_array_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+// A singular string or numeric array. (Get just the array itself)
+static chrpc_status_t chrpc_block_array_from_buffer(const chrpc_type_t *ct, void **dest_arr, uint32_t *num_eles, const uint8_t *buf, size_t buf_len, size_t *readden) {
     if (buf_len < sizeof(uint32_t)) {
         return CHRPC_UNEXPECTED_END;
     }
 
     uint32_t num_cells = *(uint32_t *)buf;
+
     size_t cell_size = chrpc_blockable_type_cell_size(ct);
 
     size_t rem_len = buf_len - sizeof(uint32_t);
@@ -828,12 +829,33 @@ static chrpc_status_t chrpc_block_array_inner_value_from_buffer(const chrpc_type
     // We have successfully read from the buffer.
     // We can write readden here.
     *readden = sizeof(uint32_t) + arr_bytes;
+    *dest_arr = arr;
+
+    if (num_eles) {
+        *num_eles = num_cells;
+    }
+
+    return CHRPC_SUCCESS;
+}
+
+// This function really just wraps the above function.
+static chrpc_status_t chrpc_block_array_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    void *arr;
+
+    uint32_t num_eles;
+    chrpc_status_t arr_status = chrpc_block_array_from_buffer(ct, &arr, &num_eles, buf, buf_len, readden);
+
+    if (arr_status != CHRPC_SUCCESS) {
+        return arr_status;
+    }
 
     chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
 
     if (ct->type_id == CHRPC_STRING_TID) {
         ivp->str = (char *)arr;
         *iv = ivp;
+
+        // NOTE: Length is not used for strings (Might want to change this someday)
 
         return CHRPC_SUCCESS;
     }
@@ -866,7 +888,152 @@ static chrpc_status_t chrpc_block_array_inner_value_from_buffer(const chrpc_type
         break; // SHOULD NEVER MAKE IT HERE.
     }
 
+    ivp->array_len = num_eles;
     *iv = ivp;
+
+    return CHRPC_SUCCESS;
+}
+
+static chrpc_status_t chrpc_struct_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    size_t bytes_read = 0;
+
+    const uint32_t num_fields = ct->struct_fields_types->num_fields;
+    chrpc_inner_value_t **fields = (chrpc_inner_value_t **)
+        safe_malloc(sizeof(chrpc_inner_value_t *) * num_fields);
+
+    uint32_t fi = 0;
+    chrpc_status_t field_status;
+
+    for (fi = 0; fi < ct->struct_fields_types->num_fields; fi++) {
+        size_t field_read;
+        field_status = chrpc_inner_value_from_buffer(ct->struct_fields_types->field_types[fi], &(fields[fi]), 
+                buf + bytes_read, buf_len - bytes_read, &field_read);
+
+        if (field_status != CHRPC_SUCCESS) {
+            break;
+        }
+
+        bytes_read += field_read;
+    }
+
+    if (field_status != CHRPC_SUCCESS) {
+        // Delete all correctly constructed inner values.
+        for (size_t i = 0; i < fi; i++) {
+            delete_chrpc_inner_value(ct->struct_fields_types->field_types[i], fields[i]); 
+        }
+        safe_free(fields);
+        return field_status;
+    }
+
+    chrpc_inner_value_t *struct_iv = (chrpc_inner_value_t *)
+        safe_malloc(sizeof(chrpc_inner_value_t));
+
+    struct_iv->struct_entries = fields;
+
+    *iv = struct_iv;
+    *readden = bytes_read;
+
+    return CHRPC_SUCCESS;
+}
+
+// Specifically for an array of strings.
+static chrpc_status_t chrpc_str_array_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    size_t bytes_read = 0;
+
+    if (buf_len < sizeof(uint32_t)) {
+        return CHRPC_UNEXPECTED_END;
+    }
+
+    uint32_t num_eles = *(uint32_t *)buf;
+    bytes_read += sizeof(uint32_t);
+
+    char **str_arr = (char **)safe_malloc(sizeof(char *) * num_eles);
+    
+    // NOTE: We must give this an initial value because an array may have 0 elements.
+    chrpc_status_t str_status = CHRPC_SUCCESS;
+
+    uint32_t si;
+    for (si = 0; si < num_eles; si++) {
+        size_t tmp_read;
+
+        char *str;
+
+        // Array Cell type should always be a string here! (Don't need the length here)
+        str_status = chrpc_block_array_from_buffer(ct->array_cell_type, (void **)&str, NULL, buf + bytes_read, buf_len - bytes_read, &tmp_read); 
+        if (str_status != CHRPC_SUCCESS) {
+            break;
+        }
+        
+        bytes_read += tmp_read;
+        str_arr[si] = str;
+    }
+
+    if (str_status != CHRPC_SUCCESS) {
+        for (uint32_t i = 0; i < si; i++) {
+            safe_free(str_arr[i]);
+        }
+        safe_free(str_arr);
+        return str_status;
+    }
+
+    // Otherwise success!
+    chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)
+        safe_malloc(sizeof(chrpc_inner_value_t));
+
+    ivp->array_len = num_eles;
+    ivp->str_arr = str_arr;
+
+    *readden = bytes_read;
+    *iv = ivp;
+
+    return CHRPC_SUCCESS;
+}
+
+static chrpc_status_t chrpc_cmp_array_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    size_t bytes_read = 0;
+
+    if (buf_len < sizeof(uint32_t)) {
+        return CHRPC_UNEXPECTED_END;
+    }
+
+    uint32_t num_eles = *(uint32_t *)buf;
+    bytes_read += sizeof(uint32_t);
+
+    chrpc_inner_value_t **arr = (chrpc_inner_value_t **)
+        safe_malloc(sizeof(chrpc_inner_value_t *) * num_eles);
+
+    uint32_t ci;
+    chrpc_status_t status;
+
+    for (ci = 0; ci < num_eles; ci++) {
+        size_t tmp_read;
+        chrpc_inner_value_t *val;
+
+        status = chrpc_inner_value_from_buffer(ct->array_cell_type, &val, buf + bytes_read, buf_len - bytes_read, &tmp_read);
+        if (status != CHRPC_SUCCESS) {
+            break;
+        }
+
+        bytes_read += tmp_read;
+        arr[ci] = val;
+    }
+
+    if (status != CHRPC_SUCCESS) {
+        for (uint32_t i = 0; i < ci; i++) {
+            delete_chrpc_inner_value(ct->array_cell_type, arr[i]);
+        }
+        safe_free(arr);
+        return status;
+    }
+
+    chrpc_inner_value_t *ivp = 
+        (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+
+    ivp->array_len = num_eles;
+    ivp->array_entries = arr;
+
+    *iv = ivp;
+    *readden = bytes_read;
 
     return CHRPC_SUCCESS;
 }
@@ -885,51 +1052,17 @@ chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner
     // It's not blockable:
     // Either a struct, an array of strings, or an array of composites.
 
-    size_t bytes_read = 0;
-
     if (ct->type_id == CHRPC_STRUCT_TID) {
-        const uint32_t num_fields = ct->struct_fields_types->num_fields;
-        chrpc_inner_value_t **fields = (chrpc_inner_value_t **)
-            safe_malloc(sizeof(chrpc_inner_value_t *) * num_fields);
-
-        uint32_t fi = 0;
-        chrpc_status_t field_status;
-
-        for (fi = 0; fi < ct->struct_fields_types->num_fields; fi++) {
-            size_t field_read;
-            field_status = chrpc_inner_value_from_buffer(ct->struct_fields_types->field_types[fi], &(fields[fi]), 
-                    buf + bytes_read, buf_len - bytes_read, &field_read);
-
-            if (field_status != CHRPC_SUCCESS) {
-                break;
-            }
-
-            bytes_read += field_read;
-        }
-
-        if (field_status != CHRPC_SUCCESS) {
-            // Delete all correctly constructed inner values.
-            for (size_t i = 0; i < fi; i++) {
-                delete_chrpc_inner_value(ct->struct_fields_types->field_types[i], fields[i]); 
-            }
-            safe_free(fields);
-            return field_status;
-        }
-
-        chrpc_inner_value_t *struct_iv = (chrpc_inner_value_t *)
-            safe_malloc(sizeof(chrpc_inner_value_t));
-
-        struct_iv->struct_entries = fields;
-
-        *iv = struct_iv;
-        *readden = bytes_read;
-
-        return CHRPC_SUCCESS;
+        return chrpc_struct_inner_value_from_buffer(ct, iv, buf, buf_len, readden);
     }
 
-    // Not a struct, must be an array!
 
-    // 
-    return CHRPC_SUCCESS;
+    // Array of strings case.
+    if (ct->array_cell_type->type_id == CHRPC_STRING_TID) {
+        return chrpc_str_array_inner_value_from_buffer(ct, iv, buf, buf_len, readden);
+    }
+
+    // Otherwise, composite array.
+    return chrpc_cmp_array_inner_value_from_buffer(ct, iv, buf, buf_len, readden);
 }
 
