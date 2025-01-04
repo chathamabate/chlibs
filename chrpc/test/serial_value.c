@@ -325,71 +325,71 @@ static void test_chrpc_value_equals(void) {
     );
 }
 
-static void test_chrpc_inner_value_to_buffer(void) {
+static void test_chrpc_inner_value_to_and_from_buffer(void) {
     typedef struct {
         chrpc_value_t *val;
 
-        uint8_t exp_buf[TEST_CHRPC_TEST_BUFFER_LEN];
-        size_t exp_len;
+        uint8_t buf[TEST_CHRPC_TEST_BUFFER_LEN];
+        size_t buf_len;
     } test_case_t;
 
     test_case_t CASES[] = {
         {
             .val = new_chrpc_b8_value(1),
-            .exp_buf = { 1 },
-            .exp_len = 1 
+            .buf = { 1 },
+            .buf_len = 1 
         },
         {
             .val = new_chrpc_u32_value(256),
-            .exp_buf = { 0x0, 0x1, 0x0, 0x0 },
-            .exp_len = 4 
+            .buf = { 0x0, 0x1, 0x0, 0x0 },
+            .buf_len = 4 
         },
         {
             .val = new_chrpc_i64_value(-2),
-            .exp_buf = { 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
-            .exp_len = 8 
+            .buf = { 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF },
+            .buf_len = 8 
         },
         {
             .val = new_chrpc_i16_array_value_va(1, 3, -1),
-            .exp_buf = { 3, 0x0, 0x0, 0x0, 1, 0x0, 3, 0x0, 0xFF, 0xFF },
-            .exp_len = 10 
+            .buf = { 3, 0x0, 0x0, 0x0, 1, 0x0, 3, 0x0, 0xFF, 0xFF },
+            .buf_len = 10 
         },
         {
             .val = new_chrpc_str_value("Hello"),
-            .exp_buf = { 6, 0, 0, 0, 'H', 'e', 'l', 'l', 'o', 0 },
-            .exp_len = 10 
+            .buf = { 6, 0, 0, 0, 'H', 'e', 'l', 'l', 'o', 0 },
+            .buf_len = 10 
         },
         {
             .val = new_chrpc_str_array_value_va(
                 "Hey", "Bye", "Yo"
             ),
-            .exp_buf = { 
+            .buf = { 
                 3, 0, 0, 0, 
                 4, 0, 0, 0, 'H', 'e', 'y',  0,
                 4, 0, 0, 0, 'B', 'y', 'e',  0,
                 3, 0, 0, 0, 'Y', 'o',  0,
             },
-            .exp_len = 27
+            .buf_len = 27
         },
         {
             .val = new_chrpc_struct_value_va(
                 new_chrpc_str_value("Di"),
                 new_chrpc_u16_value(100)
             ),
-            .exp_buf = { 3, 0, 0, 0, 'D', 'i', 0, 100, 0x0 },
-            .exp_len = 9 
+            .buf = { 3, 0, 0, 0, 'D', 'i', 0, 100, 0x0 },
+            .buf_len = 9 
         },
         {
             .val = new_chrpc_i16_empty_array_value(),
-            .exp_buf = { 0, 0, 0, 0 },
-            .exp_len = 4 
+            .buf = { 0, 0, 0, 0 },
+            .buf_len = 4 
         },
         {
             .val = new_chrpc_composite_empty_array_value(
                 new_chrpc_struct_type(CHRPC_BYTE_T)
             ),
-            .exp_buf = { 0, 0, 0, 0 },
-            .exp_len = 4 
+            .buf = { 0, 0, 0, 0 },
+            .buf_len = 4 
         },
         {
             .val = new_chrpc_composite_nempty_array_value_va(
@@ -402,91 +402,100 @@ static void test_chrpc_inner_value_to_buffer(void) {
                     new_chrpc_b8_value(4)
                 ) 
             ),
-            .exp_buf = { 
+            .buf = { 
                 2, 0, 0, 0,
                 1, 2, 3, 4
             },
-            .exp_len = 8 
+            .buf_len = 8 
         },
+        {
+            .val = new_chrpc_composite_nempty_array_value_va(
+                new_chrpc_struct_value_va(
+                    new_chrpc_str_value("Bobby"),
+                    new_chrpc_str_value("Flay"),
+                    new_chrpc_b8_array_value_va(1, 2, 3)
+                ),
+                new_chrpc_struct_value_va(
+                    new_chrpc_str_value("Mark"),
+                    new_chrpc_str_value("David"),
+                    new_chrpc_b8_array_value_va(1, 1, 1)
+                ),
+                new_chrpc_struct_value_va(
+                    new_chrpc_str_value("Alyssa"),
+                    new_chrpc_str_value("Smith"),
+                    new_chrpc_b8_array_value_va(4, 5)
+                ),
+                new_chrpc_struct_value_va(
+                    new_chrpc_str_value("Larry"),
+                    new_chrpc_str_value("Alm"),
+                    new_chrpc_b8_array_value_va(0)
+                )
+            ),
+            .buf = {
+                4, 0, 0, 0, // 4
 
+                6, 0, 0, 0, 'B', 'o', 'b', 'b', 'y', 0, // 10
+                5, 0, 0, 0, 'F', 'l', 'a', 'y', 0, // 9
+                3, 0, 0, 0, 1, 2, 3, // 7
+
+                5, 0, 0, 0, 'M', 'a', 'r', 'k', 0, // 9
+                6, 0, 0, 0, 'D', 'a', 'v', 'i', 'd', 0, // 10
+                3, 0, 0, 0, 1, 1, 1, // 7
+
+                7, 0, 0, 0, 'A', 'l', 'y', 's', 's', 'a', 0, // 11
+                6, 0, 0, 0, 'S', 'm', 'i', 't', 'h', 0, // 10
+                2, 0, 0, 0, 4, 5, // 6
+
+                6, 0, 0, 0, 'L', 'a', 'r', 'r', 'y', 0, // 10
+                4, 0, 0, 0, 'A', 'l', 'm', 0, // 8
+                1, 0, 0, 0, 0 // 5
+                
+                // total = 106
+            },
+            .buf_len = 106
+        }
     };
     size_t num_cases = sizeof(CASES) / sizeof(test_case_t);
 
     for (size_t i = 0; i < num_cases; i++) {
+        chrpc_status_t status;
+
         test_case_t c = CASES[i];
+
+        // First in the to direction.
 
         size_t written;
         uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
 
-        chrpc_status_t status = 
-            chrpc_inner_value_to_buffer(c.val->type, c.val->value, 
+        status = chrpc_inner_value_to_buffer(c.val->type, c.val->value, 
                     act_buf, TEST_CHRPC_TEST_BUFFER_LEN, &written);
 
         TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
-        TEST_ASSERT_EQUAL_size_t(c.exp_len, written);
-        TEST_ASSERT_EQUAL_UINT8_ARRAY(c.exp_buf, act_buf, c.exp_len);
+        TEST_ASSERT_EQUAL_size_t(c.buf_len, written);
+        TEST_ASSERT_EQUAL_UINT8_ARRAY(c.buf, act_buf, c.buf_len);
+
+        // Next in the from direction.
+        
+        size_t readden;
+        chrpc_inner_value_t *iv;
+
+        status = chrpc_inner_value_from_buffer(c.val->type, &iv, c.buf, c.buf_len, &readden);
+
+        TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+        TEST_ASSERT_EQUAL_size_t(c.buf_len, readden);
+
+        chrpc_value_t v = {
+            .type = c.val->type, // Remeber this is owned by c.val
+                                 // Only allowing it here to use the equals function below.
+            .value = iv
+        };
+
+        TEST_ASSERT_TRUE(chrpc_value_equals(c.val, &v));
+        delete_chrpc_inner_value(c.val->type, iv);
 
         // Cleanup at the end.
         delete_chrpc_value(c.val);
     }
-}
-
-static void test_chrpc_big_inner_value_to_buffer(void) {
-    chrpc_value_t *v = new_chrpc_composite_nempty_array_value_va(
-        new_chrpc_struct_value_va(
-            new_chrpc_str_value("Bobby"),
-            new_chrpc_str_value("Flay"),
-            new_chrpc_b8_array_value_va(1, 2, 3)
-        ),
-        new_chrpc_struct_value_va(
-            new_chrpc_str_value("Mark"),
-            new_chrpc_str_value("David"),
-            new_chrpc_b8_array_value_va(1, 1, 1)
-        ),
-        new_chrpc_struct_value_va(
-            new_chrpc_str_value("Alyssa"),
-            new_chrpc_str_value("Smith"),
-            new_chrpc_b8_array_value_va(4, 5)
-        ),
-        new_chrpc_struct_value_va(
-            new_chrpc_str_value("Larry"),
-            new_chrpc_str_value("Alm"),
-            new_chrpc_b8_array_value_va(0)
-        )
-    );
-
-    const uint8_t exp_buf[] = {
-        4, 0, 0, 0,
-
-        6, 0, 0, 0, 'B', 'o', 'b', 'b', 'y', 0,
-        5, 0, 0, 0, 'F', 'l', 'a', 'y', 0,
-        3, 0, 0, 0, 1, 2, 3,
-
-        5, 0, 0, 0, 'M', 'a', 'r', 'k', 0,
-        6, 0, 0, 0, 'D', 'a', 'v', 'i', 'd', 0,
-        3, 0, 0, 0, 1, 1, 1,
-
-        7, 0, 0, 0, 'A', 'l', 'y', 's', 's', 'a', 0,
-        6, 0, 0, 0, 'S', 'm', 'i', 't', 'h', 0,
-        2, 0, 0, 0, 4, 5,
-
-        6, 0, 0, 0, 'L', 'a', 'r', 'r', 'y', 0,
-        4, 0, 0, 0, 'A', 'l', 'm', 0,
-        1, 0, 0, 0, 0
-    };
-    size_t exp_len = sizeof(exp_buf) / sizeof(uint8_t);
-
-    uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
-    size_t written;
-
-    chrpc_status_t status = 
-        chrpc_inner_value_to_buffer(v->type, v->value, act_buf, TEST_CHRPC_TEST_BUFFER_LEN, &written);
-
-    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
-    TEST_ASSERT_EQUAL_size_t(exp_len, written);
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(exp_buf, act_buf, exp_len);
-
-    delete_chrpc_value(v);
 }
 
 static void test_chrpc_inner_value_to_buffer_failures(void) {
@@ -557,57 +566,6 @@ static void test_chrpc_inner_value_to_buffer_failures(void) {
     }
 }
 
-static void test_chrpc_inner_value_from_buffer(void) {
-    typedef struct {
-        uint8_t act_buf[TEST_CHRPC_TEST_BUFFER_LEN];
-        size_t act_buf_len;
-
-        chrpc_value_t *exp_value;
-    } test_case_t;
-
-    test_case_t CASES[] = {
-        {
-            .act_buf = {
-                1
-            },
-            .act_buf_len = 1,
-            .exp_value = new_chrpc_b8_value(1)
-        }
-    };
-    size_t num_cases = sizeof(CASES) / sizeof(test_case_t);
-
-    for (size_t i = 0; i < num_cases; i++) {
-        test_case_t c = CASES[i];
-
-        chrpc_type_t *ct = new_chrpc_type_copy(c.exp_value->type);
-
-        size_t readden;
-        chrpc_inner_value_t *iv;
-        
-        chrpc_status_t status = 
-            chrpc_inner_value_from_buffer(ct, &iv, c.act_buf, c.act_buf_len, &readden);
-
-        TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
-        TEST_ASSERT_EQUAL_size_t(c.act_buf_len, readden);
-
-        // We construct our own value pair here just so we can call equals below.
-        chrpc_value_t v = {
-            .type = ct,
-            .value = iv
-        };
-
-        TEST_ASSERT_TRUE(chrpc_value_equals(c.exp_value, &v));
-
-        // Here we delete the type and value one at a time.
-        delete_chrpc_inner_value(v.type, v.value);
-        delete_chrpc_type(v.type);
-
-        delete_chrpc_value(c.exp_value);
-    }
-
-    
-}
-
 void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_simple_constructors);
     RUN_TEST(test_chrpc_value_simple_array_constructors);
@@ -616,8 +574,6 @@ void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_composite_array);
     RUN_TEST(test_chrpc_big_composite_value);
     RUN_TEST(test_chrpc_value_equals);
-    RUN_TEST(test_chrpc_inner_value_to_buffer);
-    RUN_TEST(test_chrpc_big_inner_value_to_buffer);
+    RUN_TEST(test_chrpc_inner_value_to_and_from_buffer);
     RUN_TEST(test_chrpc_inner_value_to_buffer_failures);
-    RUN_TEST(test_chrpc_inner_value_from_buffer);
 }
