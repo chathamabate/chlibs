@@ -268,6 +268,29 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
     return CHRPC_SYNTAX_ERROR;
 }
 
+chrpc_type_t *new_chrpc_type_copy(const chrpc_type_t *ct) {
+    // Remeber, primitives are all singletons!
+    if (chrpc_type_is_primitive(ct)) {
+        return (chrpc_type_t *)ct;
+    }
+
+    if (ct->type_id == CHRPC_ARRAY_TID) {
+        chrpc_type_t *cell_type = new_chrpc_type_copy(ct->array_cell_type);
+        return new_chrpc_array_type(cell_type);
+    }
+
+    // Otherwise, we must be working with a struct type.
+
+    chrpc_type_t **field_types = (chrpc_type_t **)
+        safe_malloc(sizeof(chrpc_type_t *) * ct->struct_fields_types->num_fields);
+
+    for (uint8_t i = 0; i < ct->struct_fields_types->num_fields; i++) {
+        field_types[i] = new_chrpc_type_copy(ct->struct_fields_types->field_types[i]);
+    }
+
+    return new_chrpc_struct_type_from_internals(field_types, ct->struct_fields_types->num_fields);
+}
+
 bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2) {
     if (ct1->type_id != ct2->type_id) {
         return false;

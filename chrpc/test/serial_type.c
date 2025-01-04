@@ -47,6 +47,26 @@ static void test_chrpc_type_new_and_delete(void) {
     delete_chrpc_type(ct);
 }
 
+static void test_chrpc_type_copy(void) {
+    chrpc_type_t *ct1 = new_chrpc_struct_type(
+        CHRPC_STRING_T,
+        CHRPC_INT64_T,
+        new_chrpc_array_type(
+            new_chrpc_struct_type(
+                CHRPC_STRING_T,
+                CHRPC_INT64_T
+            )
+        )
+    );
+
+    chrpc_type_t *ct2 = new_chrpc_type_copy(ct1);
+
+    TEST_ASSERT_TRUE(chrpc_type_equals(ct1, ct2));
+
+    delete_chrpc_type(ct1);
+    delete_chrpc_type(ct2);
+}
+
 static void test_chrpc_type_equals(void) {
     typedef struct {
         chrpc_type_t *ct1;
@@ -338,6 +358,7 @@ static void test_chrpc_type_from_buffer_failures(void)  {
 
 void chrpc_serial_type_tests(void) {
     RUN_TEST(test_chrpc_type_new_and_delete);
+    RUN_TEST(test_chrpc_type_copy);
     RUN_TEST(test_chrpc_type_equals);
     RUN_TEST(test_chrpc_type_to_and_from_buffer);
     RUN_TEST(test_chrpc_type_to_buffer_failures);

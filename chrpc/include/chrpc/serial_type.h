@@ -133,6 +133,9 @@ void delete_chrpc_type(chrpc_type_t *ct);
 chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written);
 chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t **ct, size_t *readden);
 
+// Make a copy of a given type.
+chrpc_type_t *new_chrpc_type_copy(const chrpc_type_t *ct);
+
 bool chrpc_type_equals(const chrpc_type_t *ct1, const chrpc_type_t *ct2);
 
 #endif
