@@ -7,6 +7,27 @@
 #include "unity/unity.h"
 #include <stdbool.h>
 
+static void test_l_delete_and_move(const list_impl_t *impl) {
+    list_t *l = new_list(impl, sizeof(uint32_t));
+
+    uint32_t items[] = {
+        3, 4, 5, 6
+    };
+    size_t items_size = sizeof(items) / sizeof(uint32_t);
+
+    for (size_t i = 0; i < items_size; i++) {
+        l_push(l, &(items[i]));
+    }
+
+    uint32_t *arr = (uint32_t *)delete_and_move_list(l);
+    TEST_ASSERT_EQUAL_UINT32_ARRAY(items, arr, items_size);
+
+    safe_free(arr);
+
+    list_t *le = new_list(impl, sizeof(char));
+    TEST_ASSERT_NULL(delete_and_move_list(le));
+}
+
 static void test_l_cell_size(const list_impl_t *impl) {
     list_t *l = new_list(impl, sizeof(uint32_t));
     TEST_ASSERT_EQUAL(sizeof(uint32_t), l_cell_size(l));
@@ -181,6 +202,7 @@ static void test_l_iterator(const list_impl_t *impl) {
 }
 
 static void test_l(const list_impl_t *impl) {
+    test_l_delete_and_move(impl);
     test_l_cell_size(impl);
     test_l_push(impl);
     test_l_set_get(impl);

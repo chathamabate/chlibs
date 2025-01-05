@@ -1,5 +1,6 @@
 #include "chutil/list.h"
 #include "chsys/mem.h"
+#include <stdlib.h>
 #include <string.h>
 
 
@@ -7,6 +8,7 @@
 static const list_impl_t ARRAY_LIST_IMPL_VAL = {
     .constructor = (list_constructor_ft)new_array_list,
     .destructor = (list_destructor_ft)delete_array_list,
+    .move_destructor = (list_move_destructor_ft)delete_and_move_array_list,
     .len = (list_len_ft)al_len,
     .cell_size = (list_cell_size_ft)al_cell_size,
     .get = (list_get_ft)al_get,
@@ -24,6 +26,7 @@ const list_impl_t *ARRAY_LIST_IMPL = &ARRAY_LIST_IMPL_VAL;
 static const list_impl_t LINKED_LIST_IMPL_VAL = {
     .constructor = (list_constructor_ft)new_linked_list,
     .destructor = (list_destructor_ft)delete_linked_list,
+    .move_destructor = (list_move_destructor_ft)delete_and_move_linked_list,
     .len = (list_len_ft)ll_len,
     .cell_size = (list_cell_size_ft)ll_cell_size,
     .get = (list_get_ft)ll_get,
@@ -52,6 +55,12 @@ void delete_list(list_t *l) {
     safe_free(l);
 }
 
+void *delete_and_move_list(list_t *l) {
+    void *res = l->impl->move_destructor(l->list);
+    safe_free(l);
+    return res;
+}
+
 // Array List 
 
 array_list_t *new_array_list(size_t cs) {
@@ -73,6 +82,18 @@ array_list_t *new_array_list(size_t cs) {
 void delete_array_list(array_list_t *al) {
     safe_free(al->arr);
     safe_free(al);
+}
+
+void *delete_and_move_array_list(array_list_t *al) {
+    if (al->len == 0) {
+        delete_array_list(al);
+        return NULL;
+    }
+
+    // NOTE: The given table is realloc'd before being removed!
+    void *res = safe_realloc(al->arr, al->cell_size * al->len);
+    safe_free(al);
+    return res;
 }
 
 void al_push(array_list_t *al, const void *src) {
@@ -160,6 +181,32 @@ void delete_linked_list(linked_list_t *ll) {
     }
 
     safe_free(ll);
+}
+
+void *delete_and_move_linked_list(linked_list_t *ll) {
+    if (ll->len == 0) {
+        delete_linked_list(ll);
+        return NULL;
+    }
+
+    void *res = safe_malloc(ll->cell_size * ll->len);
+
+    linked_list_node_hdr_t *node = ll->first;
+    size_t i = 0;
+
+    while (node) {
+        void *cell = llnh_get_cell(node); 
+        memcpy(((uint8_t *)res) + (i * ll->cell_size), cell, ll->cell_size);
+
+        node = node->next;
+        i++;
+    }
+
+    // Once we have copied all the cells, just delete the linked list
+    // as normal.
+    delete_linked_list(ll);
+
+    return res;
 }
 
 void *ll_get(linked_list_t *ll, size_t i) {

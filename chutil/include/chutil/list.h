@@ -10,6 +10,7 @@
 
 typedef void *(*list_constructor_ft)(size_t);
 typedef void (*list_destructor_ft)(void *);
+typedef void *(*list_move_destructor_ft)(void *);
 typedef size_t (*list_len_ft)(void *);
 typedef size_t (*list_cell_size_ft)(void *);
 typedef void *(*list_get_ft)(void *, size_t);
@@ -24,6 +25,11 @@ typedef void *(*list_next_ft)(void *);
 typedef struct _list_impl_t {
     list_constructor_ft constructor;
     list_destructor_ft  destructor;
+
+    // Move destructor should return NULL and call normal delete routine
+    // when given list is empty.
+    list_move_destructor_ft move_destructor;
+
     list_len_ft         len;
     list_cell_size_ft   cell_size;
     list_get_ft         get;
@@ -47,6 +53,7 @@ extern const list_impl_t *LINKED_LIST_IMPL;
 
 list_t *new_list(const list_impl_t *impl, size_t cs);
 void delete_list(list_t *l);
+void *delete_and_move_list(list_t *l);
 
 static inline size_t l_len(list_t *l) {
     return l->impl->len(l->list);
@@ -102,6 +109,8 @@ typedef struct _array_list_t {
 array_list_t *new_array_list(size_t cs);
 
 void delete_array_list(array_list_t *al);
+
+void *delete_and_move_array_list(array_list_t *al);
 
 static inline size_t al_len(array_list_t *al) {
     return al->len;
@@ -160,6 +169,7 @@ typedef struct _linked_list_t {
 
 linked_list_t *new_linked_list(size_t cs);
 void delete_linked_list(linked_list_t *ll);
+void *delete_and_move_linked_list(linked_list_t *ll);
 
 static inline size_t ll_len(linked_list_t *ll) {
     return ll->len;
