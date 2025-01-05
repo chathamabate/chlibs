@@ -28,6 +28,12 @@ static chrpc_type_t _CHRPC_UINT32_T = {
 static chrpc_type_t _CHRPC_UINT64_T = {
     .type_id = CHRPC_UINT64_TID
 };
+static chrpc_type_t _CHRPC_FLOAT32_T = {
+    .type_id = CHRPC_FLOAT32_TID
+};
+static chrpc_type_t _CHRPC_FLOAT64_T = {
+    .type_id = CHRPC_FLOAT64_TID
+};
 static chrpc_type_t _CHRPC_STRING_T = {
     .type_id = CHRPC_STRING_TID
 }; 
@@ -39,6 +45,8 @@ chrpc_type_t * const CHRPC_INT64_T = &_CHRPC_INT64_T;
 chrpc_type_t * const CHRPC_UINT16_T = &_CHRPC_UINT16_T;
 chrpc_type_t * const CHRPC_UINT32_T = &_CHRPC_UINT32_T;
 chrpc_type_t * const CHRPC_UINT64_T = &_CHRPC_UINT64_T;
+chrpc_type_t * const CHRPC_FLOAT32_T = &_CHRPC_FLOAT32_T;
+chrpc_type_t * const CHRPC_FLOAT64_T = &_CHRPC_FLOAT64_T;
 chrpc_type_t * const CHRPC_STRING_T = &_CHRPC_STRING_T; 
 
 chrpc_type_t *new_chrpc_primitive_type_from_id(chrpc_type_id_t tid) {
@@ -57,6 +65,10 @@ chrpc_type_t *new_chrpc_primitive_type_from_id(chrpc_type_id_t tid) {
         return CHRPC_UINT32_T;
     case CHRPC_UINT64_TID:
         return CHRPC_UINT64_T;
+    case CHRPC_FLOAT32_TID:
+        return CHRPC_FLOAT32_T;
+    case CHRPC_FLOAT64_TID:
+        return CHRPC_FLOAT64_T;
     case CHRPC_STRING_TID:
         return CHRPC_STRING_T;
     default:

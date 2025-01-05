@@ -39,6 +39,14 @@ static void test_chrpc_value_simple_constructors(void) {
     cv = new_chrpc_u64_value(556655);
     TEST_ASSERT_EQUAL_UINT64(556655, cv->value->u64);
     delete_chrpc_value(cv);
+
+    cv = new_chrpc_f32_value(1.34);
+    TEST_ASSERT_EQUAL_FLOAT(1.34, cv->value->f32);
+    delete_chrpc_value(cv);
+
+    cv = new_chrpc_f64_value(-231.34);
+    TEST_ASSERT_EQUAL_DOUBLE(-231.34, cv->value->f64);
+    delete_chrpc_value(cv);
 }
 
 static void test_chrpc_value_simple_array_constructors(void) {
@@ -51,7 +59,17 @@ static void test_chrpc_value_simple_array_constructors(void) {
 
     cv = new_chrpc_i32_array_value_va(-1, 212, -3443);
     int32_t i32_arr[] = {-1, 212, -3443};
-    TEST_ASSERT_EQUAL_UINT8_ARRAY(i32_arr, cv->value->i32_arr, 3);
+    TEST_ASSERT_EQUAL_INT32_ARRAY(i32_arr, cv->value->i32_arr, 3);
+    delete_chrpc_value(cv);
+
+    cv = new_chrpc_f32_array_value_va(1.0f, 3.3f, 4343.9f);
+    float f32_arr[] = {1.0f, 3.3f, 4343.9f};
+    TEST_ASSERT_EQUAL_FLOAT_ARRAY(f32_arr, cv->value->f32_arr, 3);
+    delete_chrpc_value(cv);
+
+    cv = new_chrpc_f64_array_value_va(1.23, 3.1111, 4343.34343, 112323.1);
+    double f64_arr[] = {1.23, 3.1111, 4343.34343, 112323.1};
+    TEST_ASSERT_EQUAL_FLOAT_ARRAY(f64_arr, cv->value->f64_arr, 4);
     delete_chrpc_value(cv);
 
     cv = new_chrpc_u64_empty_array_value();
@@ -164,6 +182,13 @@ static void test_chrpc_composite_array(void) {
     );
     TEST_ASSERT_NULL(cv);
 
+    cv = new_chrpc_composite_nempty_array_value_va(
+        new_chrpc_f32_value(1.0f),
+        new_chrpc_f32_value(1.0f),
+        new_chrpc_b8_value(1)
+    );
+    TEST_ASSERT_NULL(cv);
+
     cv = new_chrpc_composite_empty_array_value(CHRPC_STRING_T);
     TEST_ASSERT_NULL(cv);
 }
@@ -265,6 +290,21 @@ static void test_chrpc_value_equals(void) {
         )
     );
 
+    test_assert_eq_chrpc_value(
+        new_chrpc_f32_value(1.3f),
+        new_chrpc_f32_value(1.3f)
+    );
+
+    test_assert_eq_chrpc_value(
+        new_chrpc_f64_array_value_va(1.0, 3.2, 33.2),
+        new_chrpc_f64_array_value_va(1.0, 3.2, 33.2)
+    );
+
+    test_assert_neq_chrpc_value(
+        new_chrpc_f64_array_value_va(10, 3.2, 33.2),
+        new_chrpc_f64_array_value_va(1.0, 3.2, 33.2)
+    );
+
     test_assert_neq_chrpc_value(
         new_chrpc_struct_value_va(
             new_chrpc_str_value("Bobby")
@@ -350,9 +390,24 @@ static void test_chrpc_inner_value_to_and_from_buffer(void) {
             .buf_len = 8 
         },
         {
+            .val = new_chrpc_f32_value(23.2f),
+            .buf = { 0x9A, 0x99, 0xB9, 0x41 },
+            .buf_len = 4 
+        },
+        {
             .val = new_chrpc_i16_array_value_va(1, 3, -1),
             .buf = { 3, 0x0, 0x0, 0x0, 1, 0x0, 3, 0x0, 0xFF, 0xFF },
             .buf_len = 10 
+        },
+        {
+            .val = new_chrpc_f64_array_value_va(12.2, 1.0),
+            .buf = { 
+                2, 0, 0, 0,
+                
+                0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x28, 0x40,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F
+            },
+            .buf_len = 20
         },
         {
             .val = new_chrpc_str_value("Hello"),
@@ -521,6 +576,10 @@ static void test_chrpc_inner_value_to_buffer_failures(void) {
             .short_buf_len = 2
         },
         {
+            .v = new_chrpc_f32_array_value_va(1.0f),
+            .short_buf_len = 7
+        },
+        {
             .v = new_chrpc_b8_array_value_va(0),
             .short_buf_len = 4
         },
@@ -589,6 +648,13 @@ static void test_chrpc_inner_value_from_buffer_failures(void) {
                 3, 3, 1
             },
             .buf_len = 3
+        },
+        {
+            .exp_type = CHRPC_FLOAT64_T,
+            .buf = {
+                0, 0, 0, 0, 0, 0, 0
+            },
+            .buf_len = 7
         },
         {
             .exp_type = CHRPC_STRING_T,

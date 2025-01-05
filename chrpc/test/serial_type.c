@@ -14,8 +14,15 @@ static void test_chrpc_type_new_and_delete(void) {
     ct = new_chrpc_primitive_type_from_id(CHRPC_INT32_TID);
     delete_chrpc_type(ct);
 
+    ct = new_chrpc_primitive_type_from_id(CHRPC_FLOAT32_TID);
+    delete_chrpc_type(ct);
+
     ct = new_chrpc_array_type(
             new_chrpc_primitive_type_from_id(CHRPC_INT32_TID));
+    delete_chrpc_type(ct);
+
+    ct = new_chrpc_array_type(
+            new_chrpc_primitive_type_from_id(CHRPC_FLOAT64_TID));
     delete_chrpc_type(ct);
 
     ct = new_chrpc_array_type(
@@ -31,6 +38,7 @@ static void test_chrpc_type_new_and_delete(void) {
     ct = new_chrpc_struct_type(
         CHRPC_INT16_T,
         CHRPC_STRING_T,
+        CHRPC_FLOAT32_T,
         CHRPC_BYTE_T
     );
     delete_chrpc_type(ct);
@@ -167,14 +175,16 @@ static void test_chrpc_type_to_and_from_buffer(void) {
         {
             .serial = {
                 CHRPC_STRUCT_TID,
-                2,
+                3,
                 CHRPC_BYTE_TID,
-                CHRPC_STRING_TID
+                CHRPC_STRING_TID,
+                CHRPC_FLOAT64_TID,
             },
-            .serial_len = 4,
+            .serial_len = 5,
             .ct = new_chrpc_struct_type(
                 CHRPC_BYTE_T,
-                CHRPC_STRING_T
+                CHRPC_STRING_T,
+                CHRPC_FLOAT64_T
             )
         },
         {

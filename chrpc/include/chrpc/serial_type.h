@@ -47,12 +47,14 @@ typedef uint8_t chrpc_type_id_t;
 #define CHRPC_UINT16_TID 4
 #define CHRPC_UINT32_TID 5
 #define CHRPC_UINT64_TID 6
-#define CHRPC_STRING_TID 7
+#define CHRPC_FLOAT32_TID 7
+#define CHRPC_FLOAT64_TID 8
+#define CHRPC_STRING_TID 9
 
 // Composite Types.
 
-#define CHRPC_STRUCT_TID 8
-#define CHRPC_ARRAY_TID 9
+#define CHRPC_STRUCT_TID 10
+#define CHRPC_ARRAY_TID 11
 
 
 // This relies on primite type IDs being defined consecutively.
@@ -101,6 +103,8 @@ extern chrpc_type_t * const CHRPC_INT64_T;
 extern chrpc_type_t * const CHRPC_UINT16_T;
 extern chrpc_type_t * const CHRPC_UINT32_T;
 extern chrpc_type_t * const CHRPC_UINT64_T;
+extern chrpc_type_t * const CHRPC_FLOAT32_T;
+extern chrpc_type_t * const CHRPC_FLOAT64_T;
 extern chrpc_type_t * const CHRPC_STRING_T; 
 
 // Returns NULL if given type ID is not primitive.

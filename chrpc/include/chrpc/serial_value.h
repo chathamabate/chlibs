@@ -45,6 +45,12 @@ typedef struct _chrpc_inner_value_t {
         uint64_t u64;
         uint64_t *u64_arr;
 
+        float f32;
+        float *f32_arr;
+
+        double f64;
+        double *f64_arr;
+
         // UB if a given string's length is larger than UINT32_MAX
         char *str;
         char **str_arr;
@@ -135,6 +141,22 @@ static inline chrpc_value_t *new_chrpc_u64_empty_array_value(void) {
 }
 chrpc_value_t *_new_chrpc_u64_array_value_va(uint32_t num_eles,...);
 #define new_chrpc_u64_array_value_va(...) _new_chrpc_u64_array_value_va(NUM_ARGS(uint64_t, __VA_ARGS__), __VA_ARGS__)
+
+chrpc_value_t *new_chrpc_f32_value(float u32_val);
+chrpc_value_t *new_chrpc_f32_array_value(float *u32_array_val, uint32_t array_len);
+static inline chrpc_value_t *new_chrpc_f32_empty_array_value(void) {
+    return new_chrpc_f32_array_value(NULL, 0);
+}
+chrpc_value_t *_new_chrpc_f32_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_f32_array_value_va(...) _new_chrpc_f32_array_value_va(NUM_ARGS(float, __VA_ARGS__), __VA_ARGS__)
+
+chrpc_value_t *new_chrpc_f64_value(double u64_val);
+chrpc_value_t *new_chrpc_f64_array_value(double *u64_array_val, uint32_t array_len);
+static inline chrpc_value_t *new_chrpc_f64_empty_array_value(void) {
+    return new_chrpc_f64_array_value(NULL, 0);
+}
+chrpc_value_t *_new_chrpc_f64_array_value_va(uint32_t num_eles,...);
+#define new_chrpc_f64_array_value_va(...) _new_chrpc_f64_array_value_va(NUM_ARGS(double, __VA_ARGS__), __VA_ARGS__)
 
 chrpc_value_t *new_chrpc_str_value(const char *str_val);
 

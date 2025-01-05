@@ -101,7 +101,7 @@ headers.install: headers.uninstall | $(INSTALL_INCLUDE_DIR)
 	cp -r $(INCLUDE_DIR)/$(LIB_NAME) $(INSTALL_INCLUDE_DIR)
 
 $(TEST_OBJS): $(TEST_OBJS_DIR)/%.o: $(TEST_DIR)/%.c $(TEST_HEADERS) $(HEADERS) | $(TEST_OBJS_DIR)
-	$(CC) $< -c -o $@ $(FLAGS) $(TEST_INCLUDE_FLAGS)
+	$(CC) $< -c -o $@ $(FLAGS) $(TEST_INCLUDE_FLAGS) -DUNITY_INCLUDE_DOUBLE
 
 .PHONY: test test.run
 test: $(TEST_EXEC)

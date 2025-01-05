@@ -124,7 +124,7 @@ $(INSTALL_UNITY): $(UNINSTALL_UNITY)
 	# Clone repo and build static library.
 	git clone $(UNITY_REPO) $(UNITY_DIR)
 	cd $(UNITY_DIR) && git checkout $(UNITY_HASH)
-	$(CC) -c $(UNITY_SRC_DIR)/unity.c -I$(UNITY_SRC_DIR) -o $(UNITY_SRC_DIR)/unity.o
+	$(CC) -c $(UNITY_SRC_DIR)/unity.c -I$(UNITY_SRC_DIR) -o $(UNITY_SRC_DIR)/unity.o -DUNITY_INCLUDE_DOUBLE
 	ar rcs $(UNITY_SRC_DIR)/libunity.a $(UNITY_SRC_DIR)/unity.o
 	# Copy headers and lib.
 	mkdir -p $(INSTALL_DIR)/include/unity

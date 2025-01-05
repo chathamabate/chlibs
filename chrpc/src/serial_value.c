@@ -42,6 +42,10 @@ static size_t chrpc_blockable_type_cell_size(const chrpc_type_t *ct) {
         return sizeof(uint32_t);
     case CHRPC_UINT64_TID: 
         return sizeof(uint64_t);
+    case CHRPC_FLOAT32_TID:
+        return sizeof(float);
+    case CHRPC_FLOAT64_TID: 
+        return sizeof(double);
 
     case CHRPC_STRING_TID:
         return sizeof(char);
@@ -90,6 +94,11 @@ static chrpc_block_value_t chrpc_inner_array_value_to_block_value(const chrpc_ty
     case CHRPC_UINT64_TID:
         return (chrpc_block_value_t){.block = (iv->u64_arr), .cell_size = sizeof(uint64_t), .num_cells = iv->array_len};
 
+    case CHRPC_FLOAT32_TID:
+        return (chrpc_block_value_t){.block = (iv->f32_arr), .cell_size = sizeof(float), .num_cells = iv->array_len};
+    case CHRPC_FLOAT64_TID:
+        return (chrpc_block_value_t){.block = (iv->f64_arr), .cell_size = sizeof(double), .num_cells = iv->array_len};
+
     // Arrays of these types cannot be interpreted as blocks.
     case CHRPC_STRING_TID:
     case CHRPC_STRUCT_TID:
@@ -121,6 +130,11 @@ static chrpc_block_value_t chrpc_inner_value_to_block_value(const chrpc_type_t *
         return (chrpc_block_value_t){.block = &(iv->u32), .cell_size = sizeof(uint32_t), .num_cells = 1};
     case CHRPC_UINT64_TID:
         return (chrpc_block_value_t){.block = &(iv->u64), .cell_size = sizeof(uint64_t), .num_cells = 1};
+
+    case CHRPC_FLOAT32_TID:
+        return (chrpc_block_value_t){.block = &(iv->f32), .cell_size = sizeof(float), .num_cells = 1};
+    case CHRPC_FLOAT64_TID:
+        return (chrpc_block_value_t){.block = &(iv->f64), .cell_size = sizeof(double), .num_cells = 1};
 
     case CHRPC_STRING_TID:
         return (chrpc_block_value_t){.block = iv->str, .cell_size = sizeof(char), .num_cells = strlen(iv->str) + 1};
@@ -219,15 +233,18 @@ void delete_chrpc_value(chrpc_value_t *v) {
     safe_free(v);
 }
 
-#define VA_POPULATE(num_eles, arr, t) \
+#define _VA_POPULATE(num_eles, arr, t, _t) \
     do { \
         va_list __args; \
         va_start(__args, num_eles); \
         for (uint32_t i = 0; i < num_eles; i++) { \
-            (arr)[i] = (t)va_arg(__args, int64_t); \
+            (arr)[i] = (t)va_arg(__args, _t); \
         } \
         va_end(__args); \
     } while (0)
+
+#define VA_POPULATE(num_eles, arr, t) _VA_POPULATE(num_eles, arr, t, uint64_t)
+#define VA_POPULATE_FP(num_eles, arr, t) _VA_POPULATE(num_eles, arr, t, double)
 
 // BYTE8
 
@@ -402,6 +419,56 @@ chrpc_value_t *_new_chrpc_u64_array_value_va(uint32_t num_eles,...) {
     VA_POPULATE(num_eles, u64_array_val, uint64_t);
 
     return new_chrpc_u64_array_value(u64_array_val, num_eles);
+}
+
+// FLOAT32
+
+chrpc_value_t *new_chrpc_f32_value(float f32_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->f32 = f32_val;
+
+    return new_chrpc_value_from_pair(CHRPC_FLOAT32_T, iv);
+}
+
+chrpc_value_t *new_chrpc_f32_array_value(float *f32_array_val, uint32_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->f32_arr = f32_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_FLOAT32_T), iv);
+}
+
+chrpc_value_t *_new_chrpc_f32_array_value_va(uint32_t num_eles,...) {
+    float *f32_array_val = (float *)safe_malloc(sizeof(float) * num_eles);
+
+    VA_POPULATE_FP(num_eles, f32_array_val, float);
+
+    return new_chrpc_f32_array_value(f32_array_val, num_eles);
+}
+
+// FLOAT64
+
+chrpc_value_t *new_chrpc_f64_value(double f64_val) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->f64 = f64_val;
+
+    return new_chrpc_value_from_pair(CHRPC_FLOAT64_T, iv);
+}
+
+chrpc_value_t *new_chrpc_f64_array_value(double *f64_array_val, uint32_t array_len) {
+    chrpc_inner_value_t *iv = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
+    iv->f64_arr = f64_array_val;
+    iv->array_len = array_len;
+
+    return new_chrpc_value_from_pair(new_chrpc_array_type(CHRPC_FLOAT64_T), iv);
+}
+
+chrpc_value_t *_new_chrpc_f64_array_value_va(uint32_t num_eles,...) {
+    double *f64_array_val = (double *)safe_malloc(sizeof(double) * num_eles);
+
+    VA_POPULATE_FP(num_eles, f64_array_val, double);
+
+    return new_chrpc_f64_array_value(f64_array_val, num_eles);
 }
 
 // STRING 
@@ -883,6 +950,12 @@ static chrpc_status_t chrpc_block_array_inner_value_from_buffer(const chrpc_type
         break;
     case CHRPC_UINT64_TID:
         ivp->u64_arr = (uint64_t *)arr;
+        break;
+    case CHRPC_FLOAT32_TID:
+        ivp->f32_arr = (float *)arr;
+        break;
+    case CHRPC_FLOAT64_TID:
+        ivp->f64_arr = (double *)arr;
         break;
     default:
         break; // SHOULD NEVER MAKE IT HERE.
