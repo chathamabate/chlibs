@@ -975,6 +975,8 @@ static chrpc_status_t chrpc_struct_inner_value_from_buffer(const chrpc_type_t *c
         safe_malloc(sizeof(chrpc_inner_value_t *) * num_fields);
 
     uint32_t fi = 0;
+
+    // Doesn't need an initial value becuase structs must have more than one field.
     chrpc_status_t field_status;
 
     for (fi = 0; fi < ct->struct_fields_types->num_fields; fi++) {
@@ -1076,7 +1078,7 @@ static chrpc_status_t chrpc_cmp_array_inner_value_from_buffer(const chrpc_type_t
         safe_malloc(sizeof(chrpc_inner_value_t *) * num_eles);
 
     uint32_t ci;
-    chrpc_status_t status;
+    chrpc_status_t status = CHRPC_SUCCESS;
 
     for (ci = 0; ci < num_eles; ci++) {
         size_t tmp_read;
