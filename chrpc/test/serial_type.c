@@ -250,7 +250,7 @@ static void test_chrpc_type_to_and_from_buffer(void) {
         chrpc_type_t *ct;
         size_t readden;
         TEST_ASSERT_EQUAL_INT(CHRPC_SUCCESS, 
-                chrpc_type_from_buffer(c.serial, c.serial_len, &ct, &readden));
+                chrpc_type_from_buffer(&ct, c.serial, c.serial_len, &readden));
         TEST_ASSERT_EQUAL_size_t(c.serial_len, readden);
         TEST_ASSERT_TRUE(chrpc_type_equals(c.ct, ct));
         
@@ -362,7 +362,7 @@ static void test_chrpc_type_from_buffer_failures(void)  {
         size_t readden;
 
         TEST_ASSERT_EQUAL_INT(c.exp_error, 
-                chrpc_type_from_buffer(c.buf, c.buf_len, &ct, &readden));
+                chrpc_type_from_buffer(&ct, c.buf, c.buf_len, &readden));
     }
 }
 

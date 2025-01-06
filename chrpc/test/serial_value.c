@@ -732,6 +732,78 @@ static void test_chrpc_inner_value_from_buffer_failures(void) {
     }
 }
 
+// value to/from buffer, is really just a wrapper around functions which have already been tested.
+
+static void test_chrpc_value_to_buffer(void) {
+    chrpc_status_t status;
+
+    uint8_t buf[TEST_CHRPC_TEST_BUFFER_LEN];
+
+    chrpc_value_t *v = new_chrpc_struct_value_va(
+        new_chrpc_str_value("Dale"),
+        new_chrpc_u16_value(23)
+    );
+
+    size_t written;
+    status = chrpc_value_to_buffer(v, buf, TEST_CHRPC_TEST_BUFFER_LEN, &written);
+
+    uint8_t exp_buf[] = {
+        CHRPC_STRUCT_TID, 2, CHRPC_STRING_TID, CHRPC_UINT16_TID,
+
+        5, 0, 0, 0, 'D', 'a', 'l', 'e', 0,
+        23, 0
+    };
+    size_t exp_len = sizeof(exp_buf) / sizeof(uint8_t);
+
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+    TEST_ASSERT_EQUAL_size_t(exp_len, written);
+    TEST_ASSERT_EQUAL_UINT8_ARRAY(exp_buf, buf, exp_len);
+
+    delete_chrpc_value(v);
+}
+
+static void test_chrpc_value_from_buffer(void) {
+    chrpc_status_t status; 
+
+    uint8_t valid_buf[] = {
+        CHRPC_ARRAY_TID, CHRPC_INT16_TID,
+
+        2, 0, 0, 0, 
+        1, 0, 2, 0
+    };
+    size_t valid_buf_len = sizeof(valid_buf) / sizeof(uint8_t);
+
+    chrpc_value_t *v;
+    size_t readden;
+
+    status = chrpc_value_from_buffer(&v, valid_buf, valid_buf_len, &readden);
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+    TEST_ASSERT_EQUAL_size_t(valid_buf_len, readden);
+
+    chrpc_value_t *exp_val = new_chrpc_i16_array_value_va(1, 2);
+    TEST_ASSERT_TRUE(chrpc_value_equals(exp_val, v));
+    delete_chrpc_value(exp_val);
+
+    delete_chrpc_value(v);
+
+    uint8_t invalid_buf0[] = {
+        CHRPC_ARRAY_TID, 123 
+    };
+    size_t invalid_buf0_len = sizeof(invalid_buf0) / sizeof(uint8_t);
+    status = chrpc_value_from_buffer(&v, invalid_buf0, invalid_buf0_len, &readden);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    uint8_t invalid_buf1[] = {
+        CHRPC_STRUCT_TID, 2, CHRPC_INT16_TID, CHRPC_INT32_TID,
+
+        1, 0, 
+        1, 0, 0
+    };
+    size_t invalid_buf1_len = sizeof(invalid_buf1) / sizeof(uint8_t);
+    status = chrpc_value_from_buffer(&v, invalid_buf1, invalid_buf1_len, &readden);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+}
+
 void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_simple_constructors);
     RUN_TEST(test_chrpc_value_simple_array_constructors);
@@ -743,4 +815,6 @@ void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_inner_value_to_and_from_buffer);
     RUN_TEST(test_chrpc_inner_value_to_buffer_failures);
     RUN_TEST(test_chrpc_inner_value_from_buffer_failures);
+    RUN_TEST(test_chrpc_value_to_buffer);
+    RUN_TEST(test_chrpc_value_from_buffer);
 }

@@ -135,7 +135,7 @@ void delete_chrpc_type(chrpc_type_t *ct);
 // found in chutil. (Really just because the channel interface uses buffers)
 
 chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written);
-chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t **ct, size_t *readden);
+chrpc_status_t chrpc_type_from_buffer(chrpc_type_t **ct, const uint8_t *buf, size_t buf_len, size_t *readden);
 
 // Make a copy of a given type.
 chrpc_type_t *new_chrpc_type_copy(const chrpc_type_t *ct);

@@ -221,6 +221,11 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1);
 // Serial(Array Value V)  = V.len, Serial(V[0]), Serial(V[1]), ..., Serial(V[V.len - 1)
 
 chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_inner_value_t *iv, uint8_t *buf, size_t buf_len, size_t *written);
+chrpc_status_t chrpc_value_to_buffer(const chrpc_value_t *v, uint8_t *buf, size_t buf_len, size_t *written);
+
 chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden);
+
+// This call expects the buffer to hold the serialized type followed by the serialized value.
+chrpc_status_t chrpc_value_from_buffer(chrpc_value_t **v, const uint8_t *buf, size_t buf_len, size_t *readden);
 
 #endif
