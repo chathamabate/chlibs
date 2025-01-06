@@ -1,5 +1,6 @@
 
 #include "channel_local2.h"
+#include "chrpc/serial_type.h"
 #include "chsys/sys.h"
 
 #include "serial_type.h"
@@ -9,6 +10,7 @@
 
 #include "channel_local.h"
 #include "chutil/misc.h"
+#include "chrpc/serial_helpers.h"
 
 void setUp(void) {
     sys_reset_malloc_count();
