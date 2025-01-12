@@ -50,6 +50,10 @@ chrpc_endpoint_t *_new_chrpc_endpoint_va(const char *n, chrpc_endpoint_ft f, chr
 #define new_chrpc_endpoint_va(name, func, rt, ...) \
     _new_chrpc_endpoint_va(name, func, rt, __VA_ARGS__, NULL)
 
+static inline chrpc_endpoint_t *new_chrpc_endpoint_argless(const char *n, chrpc_endpoint_ft f, chrpc_type_t *rt) {
+    return _new_chrpc_endpoint_va(n, f, rt, NULL);
+}
+
 void delete_chrpc_endpoint(chrpc_endpoint_t *ep);
 
 // An endpoint set MUST be non-empty.

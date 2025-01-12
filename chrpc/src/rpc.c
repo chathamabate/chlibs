@@ -6,6 +6,7 @@
 #include "chutil/string.h"
 #include <string.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 chrpc_endpoint_t *new_chrpc_endpoint(const char *n, chrpc_endpoint_ft f, chrpc_type_t *rt, chrpc_type_t **args, uint32_t num_args) {
     if (CHRPC_ENDPOINT_MAX_ARGS < num_args) {
@@ -38,22 +39,22 @@ chrpc_endpoint_t *_new_chrpc_endpoint_va(const char *n, chrpc_endpoint_ft f, chr
     va_end(args);
 
     size_t num_args = l_len(l);
+    chrpc_type_t **args_arr = (chrpc_type_t **)delete_and_move_list(l);
 
-    if (CHRPC_ENDPOINT_MAX_ARGS < num_args) {
-        delete_list(l);
+    chrpc_endpoint_t *ep = new_chrpc_endpoint(n, f, rt, args_arr, num_args);
+
+    // If the created endpoint is invalid, we will only clean up what we created
+    // within this function. Varargs may cause memory leaks... So call this function
+    // correctly!
+    if (!ep) {
+        safe_free(args_arr);
         return NULL;
     }
 
-    // NOTE: delete_and_move should return NULL if length is 0.
-    // 0 arguments is ALLOWED!
-    chrpc_type_t **args_arr = (chrpc_type_t **)delete_and_move_list(l);
-
-    return new_chrpc_endpoint(n, f, rt, args_arr, num_args); 
+    return ep;
 }
 
 void delete_chrpc_endpoint(chrpc_endpoint_t *ep) {
-    safe_free(ep->name);
-
     delete_string(ep->name);
     
     if (ep->ret) {
@@ -85,6 +86,13 @@ chrpc_endpoint_set_t *new_chrpc_endpoint_set(chrpc_endpoint_t **eps, size_t num_
 
     for (size_t i = 0; i < num_eps; i++) {
         chrpc_endpoint_t *ep = eps[i];
+
+        // Two endpoints with same name NOT ALLOWED.
+        if (hm_contains(hm, &(ep->name))) {
+            delete_hash_map(hm);
+            return NULL;
+        }
+
         hm_put(hm, &(ep->name), &ep);
     }
 
@@ -112,16 +120,18 @@ chrpc_endpoint_set_t *_new_chrpc_endpoint_set_va(int dummy, ...) {
     va_end(args);
 
     size_t num_endpoints = l_len(l);
-
-    if (num_endpoints < 1 || CHRPC_ENDPOINT_SET_MAX_SIZE < num_endpoints) {
-        delete_list(l);
-        return NULL;
-    }
-
     chrpc_endpoint_t **ep_arr =
         (chrpc_endpoint_t **)delete_and_move_list(l);
 
-    return new_chrpc_endpoint_set(ep_arr, num_endpoints);
+    chrpc_endpoint_set_t *ep_set = new_chrpc_endpoint_set(ep_arr, num_endpoints);
+
+    // Same as new endpoint notes above.
+    if (!ep_set) {
+        safe_free(ep_arr); 
+        return NULL;
+    }
+
+    return ep_set;
 }
 
 void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set) {
@@ -132,6 +142,7 @@ void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set) {
     }
 
     safe_free(ep_set->endpoints);
+    safe_free(ep_set);
 }
 
 const chrpc_endpoint_t *chrpc_endpoint_set_lookup(chrpc_endpoint_set_t *ep_set, const char *name) {
