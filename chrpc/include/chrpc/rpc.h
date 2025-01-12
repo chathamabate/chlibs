@@ -4,8 +4,11 @@
 
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
+#include "chutil/map.h"
+#include "chutil/string.h"
 
 #define CHRPC_ENDPOINT_MAX_ARGS 10
+#define CHRPC_ENDPOINT_SET_MAX_SIZE 300
 
 // An RPC server will have somesort of global state that will be passed into every 
 // endpoint function. The user can choose what the type of this global state is.
@@ -21,7 +24,8 @@
 typedef chrpc_value_t *(*chrpc_endpoint_ft)(void *server_state, chrpc_value_t **args, uint32_t num_args);
 
 typedef struct _chrpc_endpoint_t {
-    char *name;
+    // Going to use chutil string here because it helps with hashing later.
+    string_t *name;
 
     // This will be NULL for functions with no return type.
     chrpc_type_t *ret;
@@ -48,6 +52,29 @@ chrpc_endpoint_t *_new_chrpc_endpoint_va(const char *n, chrpc_endpoint_ft f, chr
 
 void delete_chrpc_endpoint(chrpc_endpoint_t *ep);
 
+// An endpoint set MUST be non-empty.
+typedef struct _chrpc_endpoint_set_t {
+    // (const string_t *) => (chrpc_endpoint_t *)
+    // (DOES NOT OWN ANY OF THE KEYS OR VALUES)
+    hash_map_t *name_map;
+
+    chrpc_endpoint_t **endpoints;
+    size_t num_endpoints;
+} chrpc_endpoint_set_t;
+
+// Given array should live entirely in dynamic memory and will be OWNED
+// by returned endpoint set.
+chrpc_endpoint_set_t *new_chrpc_endpoint_set(chrpc_endpoint_t **eps, size_t num_eps);
+
+// Expects a NULL terminated sequence of chrpc_endpoint_t *'s
+chrpc_endpoint_set_t *_new_chrpc_endpoint_set_va(int dummy, ...);
+#define new_chrpc_endpoint_set_va(...) \
+    _new_chrpc_endpoint_set_va(0, __VA_ARGS__, NULL)
+
+void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set);
+
+// Returns NULL if name is non-existent in the endpoint set.
+const chrpc_endpoint_t *chrpc_endpoint_set_lookup(chrpc_endpoint_set_t *ep_set, const char *name);
 
 
 #endif
