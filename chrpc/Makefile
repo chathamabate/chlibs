@@ -15,6 +15,7 @@ _TEST_SRCS   := main.c \
 				channel.c \
 				channel_local.c \
 				channel_local2.c \
+				rpc.c \
 				serial_type.c \
 				serial_value.c
 
