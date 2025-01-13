@@ -2,6 +2,7 @@
 #ifndef CHRPC_RPC_H
 #define CHRPC_RPC_H
 
+#include "chrpc/channel.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
 #include "chutil/map.h"
@@ -80,5 +81,21 @@ void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set);
 // Returns NULL if name is non-existent in the endpoint set.
 const chrpc_endpoint_t *chrpc_endpoint_set_lookup(chrpc_endpoint_set_t *ep_set, const char *name);
 
+// the server will have a global state, an endpoint set, a list of connections,
+// a set of worker threads.
+// Could there maybe be like pseudo system calls?
+// Or maybe just when the user disconnects...
+// Then the channel could be automatically closed???
+
+typedef struct _chrpc_server_t {
+    // I don't really want my queue constantly allocating memory all the time tho tbh...
+    // Channels will be given to the RPC server and entirely owned by them.
+    // The server should be able to remove channels after disconnection.
+    //
+    // How will disconnection happen then.
+    // channel_t *
+
+
+} chrpc_server_t;
 
 #endif

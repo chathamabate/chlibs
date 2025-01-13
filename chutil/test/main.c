@@ -3,6 +3,7 @@
 
 
 #include "map.h"
+#include "queue.h"
 #include "list.h"
 #include "heap.h"
 #include "_string.h"
@@ -29,6 +30,7 @@ int main(void) {
     list_tests();
     list_helpers_tests();
     map_tests();
+    queue_tests();
     heap_tests();
     string_tests(); 
     stream_tests();

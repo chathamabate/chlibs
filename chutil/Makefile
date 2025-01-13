@@ -4,6 +4,7 @@ DEPS		:= chsys
 _SRCS		:= list.c \
 			   list_helpers.c \
 			   map.c \
+			   queue.c \
 			   heap.c \
 			   string.c \
 			   stream.c \
@@ -13,6 +14,7 @@ _TEST_SRCS   := main.c \
 			   list.c \
 			   list_helpers.c \
 			   map.c \
+			   queue.c \
 			   heap.c \
 			   string.c \
 			   stream.c \
