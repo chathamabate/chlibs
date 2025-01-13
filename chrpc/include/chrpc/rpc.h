@@ -110,7 +110,7 @@ typedef struct _chrpc_server_t {
     // If there is an error using the channel, it will be assumed that said channel has
     // disconnected. If so, it will be destroyed.
     // Otherwise, it will be pushed back onto the queue.
-    pthread_mutex_t *q_mut;
+    pthread_mutex_t q_mut;
     size_t num_channels;
     queue_t *channels_q;
 
@@ -121,7 +121,7 @@ typedef struct _chrpc_server_t {
     pthread_t *worker_ids;
 
     // Workers poll should_exit to determine when the should return.
-    pthread_mutex_t *should_exit_mut;
+    pthread_mutex_t should_exit_mut;
     bool should_exit;
 
     // While the "const" qualifier does not prevent the mutation of underlying structures
@@ -136,12 +136,17 @@ typedef struct _chrpc_server_t {
     const chrpc_endpoint_set_t *ep_set;
 } chrpc_server_t;
 
-chrpc_server_t *new_chrpc_server(size_t workers, chrpc_endpoint_set_t *eps);
+// As the chrpc server will spawn threads, it is possible this call fails.
+// For example, if this process has already spawned the maximum number of threads.
+//
+// NOTE: The created server assumes ownership of the given endpoint set.
+// When the server is deleted, so is the endpoint set.
+chrpc_status_t new_chrpc_server(chrpc_server_t **server, size_t max_cons, size_t workers, chrpc_endpoint_set_t *eps);
 void delete_chrpc_server(chrpc_server_t *server);
 
 // Returns 0, if ownership of the channel is successfully given to the server.
 // Returns 1, if an error occurs (Most likely, the server is already full).
 // In this case, it is the user's responsibility to cleanup the channel.
-int chrpc_server_give_channel(channel_t *chn);
+int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn);
 
 #endif

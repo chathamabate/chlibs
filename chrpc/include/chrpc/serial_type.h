@@ -35,6 +35,7 @@ typedef uint8_t chrpc_status_t;
 #define CHRPC_EMPTY_STRUCT_TYPE 4
 #define CHRPC_STRUCT_TYPE_TOO_LARGE 5
 #define CHRPC_MALFORMED_TYPE 6
+#define CHRPC_SERVER_CREATION_ERROR 7
 
 typedef uint8_t chrpc_type_id_t;
 
