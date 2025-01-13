@@ -145,7 +145,7 @@ void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set) {
     safe_free(ep_set);
 }
 
-const chrpc_endpoint_t *chrpc_endpoint_set_lookup(chrpc_endpoint_set_t *ep_set, const char *name) {
+const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep_set, const char *name) {
     // NOTE: this is slightly hacky, we know that our temp key
     // will not outlive this function, so we can pretend the
     // given name is a literal to avoid copying.
