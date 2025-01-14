@@ -100,7 +100,25 @@ void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set);
 // Returns NULL if name is non-existent in the endpoint set.
 const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep_set, const char *name);
 
+
+typedef struct _chrpc_server_attrs_t {
+
+    // NOTE: When we create our response, it must not be larger than the max message size of the 
+    // client channel. If it is, we will need to send back some sort of error code.
+    size_t max_msg_size;
+
+    // max_connections cannot be less than the number of workers.
+    // If this were allowed, there would always be idle workers.
+    size_t max_connections;
+    size_t num_workers;
+
+    size_t worker_usleep_amt;
+
+} chrpc_server_attrs_t;
+
 typedef struct _chrpc_server_t {
+    chrpc_server_attrs_t attrs;
+
     // NOTE: q_mut encloses num_channels and channels_q.
     // Worker threads will pop channels off of the channels queue.
     // When a channel is popped off the queue, it will be checked for incoming messages.
@@ -117,7 +135,6 @@ typedef struct _chrpc_server_t {
     // Workers will be spawned at server creation time.
     // Workers kinda connect channels and endpoints.. doing the work required
     // for processing individual requests.
-    size_t num_workers;
     pthread_t *worker_ids;
 
     // Workers poll should_exit to determine when the should return.
@@ -139,9 +156,11 @@ typedef struct _chrpc_server_t {
 // As the chrpc server will spawn threads, it is possible this call fails.
 // For example, if this process has already spawned the maximum number of threads.
 //
+// NOTE: max_cons must be >= workers, otherwise an error will be thrown.
+//
 // NOTE: The created server assumes ownership of the given endpoint set.
 // When the server is deleted, so is the endpoint set.
-chrpc_status_t new_chrpc_server(chrpc_server_t **server, size_t max_cons, size_t workers, chrpc_endpoint_set_t *eps);
+chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps);
 void delete_chrpc_server(chrpc_server_t *server);
 
 // Returns 0, if ownership of the channel is successfully given to the server.

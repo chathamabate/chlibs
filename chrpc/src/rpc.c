@@ -11,6 +11,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <unistd.h>
 
 chrpc_endpoint_t *new_chrpc_endpoint(const char *n, chrpc_endpoint_ft f, chrpc_type_t *rt, chrpc_type_t **args, uint32_t num_args) {
     if (CHRPC_ENDPOINT_MAX_ARGS < num_args) {
@@ -167,32 +168,72 @@ const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep
 }
 
 static void *chrpc_server_worker_routine(void *arg) {
-    // TODO: Fill in the real work here...
+    chrpc_server_t *server = (chrpc_server_t *)arg;
+
+    while (true) {
+
+        bool should_exit;
+        pthread_mutex_lock(&(server->should_exit_mut));
+        should_exit = server->should_exit;
+        pthread_mutex_unlock(&(server->should_exit_mut));
+
+        if (should_exit) {
+            return NULL;
+        }
+
+        // Otherwise, let's do actual work.
+        
+        channel_t *chn;
+        int e;
+
+        pthread_mutex_lock(&(server->q_mut));
+        e = q_pop(server->channels_q, &chn);
+        pthread_mutex_unlock(&(server->q_mut));
+
+        if (e) {
+            usleep(server->attrs.worker_usleep_amt);
+            continue;
+        }
+
+        channel_status_t status;
+
+        // Lot's of things to think about here...
+
+        // Also, what about max message size???
+        // Must all the channels have the same max message size???
+        // What if the given message is just too large???
+        status = chn_refresh(chn);
+
+    }
+
+    // Should never make it here.
     return NULL;
 }
 
-chrpc_status_t new_chrpc_server(chrpc_server_t **server, size_t max_cons, size_t workers, chrpc_endpoint_set_t *eps) {
-    int e;
+chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps) {
+    // Just as a not, my argument checking is usually kinda arbitrary.
+    if (!server || attrs.max_connections == 0 || attrs.num_workers == 0 || attrs.max_msg_size == 0) {
+        return CHRPC_SERVER_CREATION_ERROR;
+    }
 
-    if (!server || max_cons == 0 || workers == 0) {
+    if (attrs.max_connections < attrs.num_workers) {
         return CHRPC_SERVER_CREATION_ERROR;
     }
 
     chrpc_server_t *s = (chrpc_server_t *)safe_malloc(sizeof(chrpc_server_t));
 
-    e = pthread_mutex_init(&(s->q_mut), NULL);
-    if (e) {
+    if (pthread_mutex_init(&(s->q_mut), NULL)) {
         goto err_q_mut;
     }
 
+    s->attrs = attrs;
+
     s->num_channels = 0;
-    s->channels_q = new_queue(max_cons, sizeof(channel_t *));
+    s->channels_q = new_queue(s->attrs.max_connections, sizeof(channel_t *));
 
-    s->num_workers = workers;
-    s->worker_ids = (pthread_t *)safe_malloc(sizeof(pthread_t) * workers);
+    s->worker_ids = (pthread_t *)safe_malloc(sizeof(pthread_t) * s->attrs.num_workers);
 
-    e = pthread_mutex_init(&(s->should_exit_mut), NULL); 
-    if (e) {
+    if (pthread_mutex_init(&(s->should_exit_mut), NULL)) {
         goto err_should_exit_mut;
     }
     s->should_exit = false;
@@ -201,15 +242,13 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, size_t max_cons, size_t
 
     // Finally, spawn workers....
     size_t i;
-    for (i = 0; i < s->num_workers; i++) {
-        e = pthread_create(&(s->worker_ids[i]), NULL, 
-                chrpc_server_worker_routine, NULL);
-        if (e) {
+    for (i = 0; i < s->attrs.num_workers; i++) {
+        if (pthread_create(&(s->worker_ids[i]), NULL, chrpc_server_worker_routine, (void *)s)) {
             break;
         }
     }
 
-    if (i < s->num_workers) {
+    if (i < s->attrs.num_workers) {
         goto err_pthread_create;
     }
 
@@ -247,7 +286,7 @@ void delete_chrpc_server(chrpc_server_t *server) {
     server->should_exit = true;
     pthread_mutex_unlock(&(server->should_exit_mut));
 
-    for (size_t i = 0; i < server->num_workers; i++) {
+    for (size_t i = 0; i < server->attrs.num_workers; i++) {
         pthread_join(server->worker_ids[i], NULL);
     }
 
@@ -274,6 +313,13 @@ void delete_chrpc_server(chrpc_server_t *server) {
 
 int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn) {
     if (!chn) {
+        return 1;
+    }
+
+    size_t mms;
+    chrpc_status_t status = chn_max_msg_size(chn, &mms);
+
+    if (status != CHRPC_SUCCESS || server->attrs.max_msg_size < mms) {
         return 1;
     }
 
