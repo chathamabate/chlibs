@@ -2,6 +2,7 @@
 #include "chrpc/channel.h"
 #include "chrpc/serial_type.h"
 #include "chsys/mem.h"
+#include "chsys/wrappers.h"
 #include "chutil/list.h"
 #include "chrpc/rpc.h"
 #include "chutil/map.h"
@@ -173,9 +174,9 @@ static void *chrpc_server_worker_routine(void *arg) {
     while (true) {
 
         bool should_exit;
-        pthread_mutex_lock(&(server->should_exit_mut));
+        safe_pthread_mutex_lock(&(server->should_exit_mut));
         should_exit = server->should_exit;
-        pthread_mutex_unlock(&(server->should_exit_mut));
+        safe_pthread_mutex_unlock(&(server->should_exit_mut));
 
         if (should_exit) {
             return NULL;
@@ -186,9 +187,9 @@ static void *chrpc_server_worker_routine(void *arg) {
         channel_t *chn;
         int e;
 
-        pthread_mutex_lock(&(server->q_mut));
+        safe_pthread_mutex_lock(&(server->q_mut));
         e = q_pop(server->channels_q, &chn);
-        pthread_mutex_unlock(&(server->q_mut));
+        safe_pthread_mutex_unlock(&(server->q_mut));
 
         if (e) {
             usleep(server->attrs.worker_usleep_amt);
@@ -202,6 +203,10 @@ static void *chrpc_server_worker_routine(void *arg) {
         // Also, what about max message size???
         // Must all the channels have the same max message size???
         // What if the given message is just too large???
+        // If there's an error sending, what do we do???
+        // Do we drop the channel all together??
+        // IDK, my head kinda hurts a little, Imma give this a break tbh.
+        // Hmmmmm, lots of things to think about here tbh...
         status = chn_refresh(chn);
 
     }
@@ -221,21 +226,14 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t at
     }
 
     chrpc_server_t *s = (chrpc_server_t *)safe_malloc(sizeof(chrpc_server_t));
-
-    if (pthread_mutex_init(&(s->q_mut), NULL)) {
-        goto err_q_mut;
-    }
-
     s->attrs = attrs;
 
+    safe_pthread_mutex_init(&(s->q_mut), NULL);
     s->num_channels = 0;
     s->channels_q = new_queue(s->attrs.max_connections, sizeof(channel_t *));
 
     s->worker_ids = (pthread_t *)safe_malloc(sizeof(pthread_t) * s->attrs.num_workers);
-
-    if (pthread_mutex_init(&(s->should_exit_mut), NULL)) {
-        goto err_should_exit_mut;
-    }
+    safe_pthread_mutex_init(&(s->should_exit_mut), NULL);
     s->should_exit = false;
 
     s->ep_set = eps;
@@ -243,57 +241,27 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t at
     // Finally, spawn workers....
     size_t i;
     for (i = 0; i < s->attrs.num_workers; i++) {
-        if (pthread_create(&(s->worker_ids[i]), NULL, chrpc_server_worker_routine, (void *)s)) {
-            break;
-        }
-    }
-
-    if (i < s->attrs.num_workers) {
-        goto err_pthread_create;
+        safe_pthread_create(&(s->worker_ids[i]), NULL, chrpc_server_worker_routine, (void *)s);
     }
 
     *server = s;
     return CHRPC_SUCCESS;
-
-err_pthread_create:
-    // Destory all threads which were correctly spawned.
-    pthread_mutex_lock(&(s->should_exit_mut));
-    s->should_exit = true;
-    pthread_mutex_unlock(&(s->should_exit_mut));
-
-    for (size_t j = 0; j < i; j++) {
-        pthread_join(s->worker_ids[j], NULL);
-    }
-
-    pthread_mutex_destroy(&(s->should_exit_mut));
-
-err_should_exit_mut:
-    safe_free(s->worker_ids);
-    delete_queue(s->channels_q);
-    pthread_mutex_destroy(&(s->q_mut));
-
-err_q_mut:
-err:
-    safe_free(s);
-
-    *server = NULL;
-    return CHRPC_SERVER_CREATION_ERROR;
 }
 
 void delete_chrpc_server(chrpc_server_t *server) {
     // Join all workers.
-    pthread_mutex_lock(&(server->should_exit_mut));
+    safe_pthread_mutex_lock(&(server->should_exit_mut));
     server->should_exit = true;
-    pthread_mutex_unlock(&(server->should_exit_mut));
+    safe_pthread_mutex_unlock(&(server->should_exit_mut));
 
     for (size_t i = 0; i < server->attrs.num_workers; i++) {
-        pthread_join(server->worker_ids[i], NULL);
+        safe_pthread_join(server->worker_ids[i], NULL);
     }
 
     // Cannot free any of the server's state until we know
     // all worker threads are done working!
 
-    pthread_mutex_destroy(&(server->should_exit_mut));
+    safe_pthread_mutex_destroy(&(server->should_exit_mut));
     safe_free(server->worker_ids);
 
     // Cleanup channel queue.
@@ -304,7 +272,7 @@ void delete_chrpc_server(chrpc_server_t *server) {
     }
 
     delete_queue(server->channels_q);
-    pthread_mutex_destroy(&(server->q_mut));
+    safe_pthread_mutex_destroy(&(server->q_mut));
 
     // Finally, delete endpoint set.
     delete_chrpc_endpoint_set((chrpc_endpoint_set_t *)(server->ep_set));
@@ -325,7 +293,7 @@ int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn) {
 
     int ret_val;
 
-    pthread_mutex_lock(&(server->q_mut));
+    safe_pthread_mutex_lock(&(server->q_mut));
 
     if (server->num_channels == q_cap(server->channels_q)) {
         ret_val = 1;
@@ -335,7 +303,7 @@ int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn) {
         ret_val = 0;
     }
 
-    pthread_mutex_unlock(&(server->q_mut));
+    safe_pthread_mutex_unlock(&(server->q_mut));
 
     return ret_val;
 }
