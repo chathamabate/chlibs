@@ -168,8 +168,28 @@ const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep
     return *ep;
 }
 
+// In buf will have size server->attrs.max_msg_size.
+static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server, uint8_t *in_buf) {
+    chrpc_status_t status;
+
+    TRY_CHANNEL_CALL(chn_refresh(chn));
+
+    size_t incoming_len;
+    TRY_CHANNEL_CALL(chn_incoming_len(chn, &incoming_len));
+
+    // We make it here, incoming_len is non-zero.
+
+    size_t readden;
+    TRY_CHANNEL_CALL(chn_receive(chn, in_buf, server->attrs.max_msg_size, &readden));
+
+    // Now what, we parse a value???
+    // If there is an error here, I believe we send stuff back???
+    return CHRPC_SUCCESS; 
+}
+
 static void *chrpc_server_worker_routine(void *arg) {
     chrpc_server_t *server = (chrpc_server_t *)arg;
+    uint8_t *in_buf = (uint8_t *)safe_malloc(server->attrs.max_msg_size);
 
     while (true) {
 
@@ -179,6 +199,7 @@ static void *chrpc_server_worker_routine(void *arg) {
         safe_pthread_mutex_unlock(&(server->should_exit_mut));
 
         if (should_exit) {
+            safe_free(in_buf);
             return NULL;
         }
 
@@ -194,21 +215,34 @@ static void *chrpc_server_worker_routine(void *arg) {
         if (e) {
             usleep(server->attrs.worker_usleep_amt);
             continue;
+        } 
+
+        // If we make it here, we have a channel, to work with.
+        // Let's call our poll helper function.
+        // This function will do the work of attempting to read an incoming message.
+        chrpc_status_t status = chrpc_poll_channel(chn, server, in_buf);
+
+        if (status != CHN_NO_INCOMING_MSG && status != CHN_SUCCESS) {
+            delete_channel(chn);
+
+            safe_pthread_mutex_lock(&(server->q_mut));
+            server->num_channels--;
+            safe_pthread_mutex_unlock(&(server->q_mut));
+
+            continue;
+        } 
+
+        // SUCCESS or NO INCOMING MESSAGE.
+            
+        if (status == CHN_NO_INCOMING_MSG) {
+            // If no work was done, sleep a lil'
+            usleep(server->attrs.worker_usleep_amt);
         }
 
-        channel_status_t status;
-
-        // Lot's of things to think about here...
-
-        // Also, what about max message size???
-        // Must all the channels have the same max message size???
-        // What if the given message is just too large???
-        // If there's an error sending, what do we do???
-        // Do we drop the channel all together??
-        // IDK, my head kinda hurts a little, Imma give this a break tbh.
-        // Hmmmmm, lots of things to think about here tbh...
-        status = chn_refresh(chn);
-
+        // Give channel back to the channel queue.
+        safe_pthread_mutex_lock(&(server->q_mut));
+        q_push(server->channels_q, &chn);
+        safe_pthread_mutex_unlock(&(server->q_mut));
     }
 
     // Should never make it here.
