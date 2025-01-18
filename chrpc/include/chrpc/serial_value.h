@@ -223,6 +223,14 @@ bool chrpc_value_equals(const chrpc_value_t *cv0, const chrpc_value_t *cv1);
 chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_inner_value_t *iv, uint8_t *buf, size_t buf_len, size_t *written);
 chrpc_status_t chrpc_value_to_buffer(const chrpc_value_t *v, uint8_t *buf, size_t buf_len, size_t *written);
 
+// This function is useful for when you want the serialized version of one chrpc value to be stored
+// in a b8 array of another chrpc value. It attempts to serialize the value, and prefixes the bytes
+// with the total size of the serialized value.
+//
+// NOTE: UNLIKE ALL OTHER FUNCTIONS IN THIS HEADER:
+// v CAN be NULL. In this case, 0 is written to the buffer (as a uint32_t) and nothing else.
+chrpc_status_t chrpc_value_to_buffer_with_length(const chrpc_value_t *v, uint8_t *buf, size_t buf_len, size_t *written);
+
 chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden);
 
 // This call expects the buffer to hold the serialized type followed by the serialized value.

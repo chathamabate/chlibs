@@ -275,16 +275,16 @@ void delete_chrpc_client(chrpc_client_t *client);
 //
 // NOTE: The given args are NOT CLEANED UP by this function. It is the user's responsibility to free
 // each arg after performing an rpc call.
-chrpc_status_t chrpc_client_send_request(const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args);
+chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args);
 
 // Expects a NULL terminated sequnce of pointer to chrpc_value_t's
-chrpc_status_t _chrpc_client_send_request_va(const char *name, chrpc_value_t **ret, ...);
+chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char *name, chrpc_value_t **ret, ...);
 
-#define chrpc_client_send_request_va(name, ret, ...) \
-    _chrpc_client_send_request_va(name, ret, __VA_ARGS__, NULL)
+#define chrpc_client_send_request_va(client, name, ret, ...) \
+    _chrpc_client_send_request_va(client, name, ret, __VA_ARGS__, NULL)
 
-static inline chrpc_status_t chrpc_client_send_argless_request(const char *name, chrpc_value_t **ret) {
-    return chrpc_client_send_request(name, ret, NULL, 0);
+static inline chrpc_status_t chrpc_client_send_argless_request(chrpc_client_t *client, const char *name, chrpc_value_t **ret) {
+    return chrpc_client_send_request(client, name, ret, NULL, 0);
 }
 
 #endif

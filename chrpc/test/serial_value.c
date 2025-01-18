@@ -804,6 +804,37 @@ static void test_chrpc_value_from_buffer(void) {
     TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
 }
 
+static void test_chrpc_value_to_buffer_with_length(void) {
+    chrpc_status_t status;
+    size_t written;
+
+    uint8_t buf[TEST_CHRPC_TEST_BUFFER_LEN]; 
+
+    chrpc_value_t *val = NULL;
+    status = chrpc_value_to_buffer_with_length(val, buf, TEST_CHRPC_TEST_BUFFER_LEN, &written); 
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+    TEST_ASSERT_EQUAL_size_t(sizeof(uint32_t), written);
+    TEST_ASSERT_EQUAL_UINT32(0, *(uint32_t *)buf);
+
+    status = chrpc_value_to_buffer_with_length(val, buf, sizeof(uint32_t) - 1, &written);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    val = new_chrpc_str_value("Hello"); // (Type)(1) + (Value)(4 + 5 + 1)
+    status = chrpc_value_to_buffer_with_length(val, buf, TEST_CHRPC_TEST_BUFFER_LEN, &written);
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+    TEST_ASSERT_EQUAL_size_t(sizeof(uint32_t) + 1 + sizeof(uint32_t) + 5 + 1, written);
+    TEST_ASSERT_EQUAL_size_t(11, *(uint32_t *)buf);
+    TEST_ASSERT_EQUAL_STRING("Hello", (char *)(buf + sizeof(uint32_t) + 1 + sizeof(uint32_t)));
+
+    status = chrpc_value_to_buffer_with_length(val, buf, 8, &written);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    status = chrpc_value_to_buffer_with_length(val, buf, sizeof(uint32_t) - 1, &written);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    delete_chrpc_value(val);
+}
+
 void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_value_simple_constructors);
     RUN_TEST(test_chrpc_value_simple_array_constructors);
@@ -817,4 +848,5 @@ void chrpc_serial_value_tests(void) {
     RUN_TEST(test_chrpc_inner_value_from_buffer_failures);
     RUN_TEST(test_chrpc_value_to_buffer);
     RUN_TEST(test_chrpc_value_from_buffer);
+    RUN_TEST(test_chrpc_value_to_buffer_with_length);
 }

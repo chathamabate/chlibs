@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 
 // A "Blockable" Type is a type who's value will always exist in its serialized form.
 // For example an INT16 is blockable since to serial an integer, its value is just copied directly to the buffer.
@@ -868,6 +869,38 @@ chrpc_status_t chrpc_value_to_buffer(const chrpc_value_t *v, uint8_t *buf, size_
     *written = type_written + val_written;
 
     return status;
+}
+
+chrpc_status_t chrpc_value_to_buffer_with_length(const chrpc_value_t *v, uint8_t *buf, size_t buf_len, size_t *written) {
+    chrpc_status_t status;
+
+    size_t total_written = 0;
+
+    if (buf_len - total_written < sizeof(uint32_t)) {
+        return CHRPC_BUFFER_TOO_SMALL;
+    }
+
+    uint32_t *len_prefix = (uint32_t *)(buf + total_written);
+
+    // Reserve space for length.
+    total_written += sizeof(uint32_t);
+
+    if (v) {
+        size_t w;
+        status = chrpc_value_to_buffer(v, buf + total_written, buf_len - total_written, &w);
+
+        if (status != CHRPC_SUCCESS) {
+            return status;
+        }
+
+        *len_prefix = w;
+        total_written += w;
+    } else {
+        *len_prefix = 0;
+    }
+
+    *written = total_written;
+    return CHRPC_SUCCESS;
 }
 
 // Assumes ct is primitive, but not a string.

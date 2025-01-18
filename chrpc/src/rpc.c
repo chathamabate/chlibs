@@ -663,11 +663,47 @@ void delete_chrpc_client(chrpc_client_t *client) {
     safe_free(client);
 }
 
-chrpc_status_t chrpc_client_send_request(const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args) {
+chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args) {
+    // NOTE: again, we are going to do this in a slightly hacky manner once again.
+    // Going to serialize on the fly.
+
+    chrpc_status_t status;
+
+    size_t buf_len = client->buf_len;
+    uint8_t *buf = client->buf;
+
+    size_t total_written = 0;
+    size_t written;
+
+    status = chrpc_type_to_buffer(client->req_type, buf + total_written, buf_len - total_written, &written);
+
+    if (status != CHRPC_SUCCESS) {
+        return status;
+    }
+
+    // Now string name.
+    size_t name_len = strlen(name) + 1;
+
+    if (buf_len - total_written < sizeof(uint32_t) + name_len) {
+        return CHRPC_BUFFER_TOO_SMALL;
+    }
+
+    *((uint32_t *)(buf + total_written)) = name_len;
+    total_written += sizeof(uint32_t);
+
+    memcpy(buf + total_written, name, name_len);
+    total_written += name_len;
+
+    // Now for arguments.
+    if (buf_len - total_written < sizeof(uint32_t)) {
+        return CHRPC_BUFFER_TOO_SMALL;
+    }
+
+
     return CHRPC_SUCCESS;
 }
 
-chrpc_status_t _chrpc_client_send_request_va(const char *name, chrpc_value_t **ret, ...) {
+chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char *name, chrpc_value_t **ret, ...) {
     return CHRPC_SUCCESS;
 }
 
