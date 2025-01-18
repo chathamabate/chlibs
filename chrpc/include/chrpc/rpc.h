@@ -10,10 +10,13 @@
 #include "chutil/string.h"
 
 #include <pthread.h>
+#include <sys/_types/_useconds_t.h>
+#include <unistd.h>
 
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
 #define CHRPC_SERVER_BUF_MIN_SIZE 200
+#define CHRPC_CLIENT_DEFAULT_TIMEOUT 500
 
 typedef enum _chrpc_server_command_t {
 
@@ -217,5 +220,54 @@ void delete_chrpc_server(chrpc_server_t *server);
 // In this case, it is the user's responsibility to cleanup the channel.
 chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn);
 
+typedef struct _chrpc_client_t {
+    // The client will wait at least timeout microseconds for a response from the server.
+    // If no response is received, the given channel will be destroyed and set to NULL.
+    //
+    // Similarly, If there is some fatal error sending a message over the channel or
+    // receiving a message over the channel, the channel will also be destoryed and set
+    // to NULL. From that point on, a CHRPC_CLIENT_ERROR will be returned everytime the user
+    // tries to send a request. 
+    //
+    // If there is a message in the channel, it should always be receivable into buf, since
+    // buf's size will be the max message size of the channel.
+    //
+    // If the receivied response is malformed, the channel will persist.
+    useconds_t timeout;
+    channel_t *chn;
+
+    // Buf will be used for preparing serialized requests.
+    size_t buf_len;
+    uint8_t *buf;
+
+    // Will be created once.
+    const chrpc_type_t *req_type;
+} chrpc_client_t;
+
+// The given channel will be OWNED by the created client.
+chrpc_status_t new_chrpc_client_to(chrpc_client_t **client, channel_t *chn, useconds_t timeout);
+
+static inline chrpc_status_t new_chrpc_client(chrpc_client_t **client, channel_t *chn) {
+    return new_chrpc_client_to(client, chn, CHRPC_CLIENT_DEFAULT_TIMEOUT);
+}
+
+void delete_chrpc_client(chrpc_client_t *client);
+
+// If the function being called has no return value, ret can be NULL.
+// Similarly, if the function being called takes no arguments, args can be NULL.
+//
+// NOTE: The given args are NOT CLEANED UP by this function. It is the user's responsibility to free
+// each arg after performing an rpc call.
+chrpc_status_t chrpc_client_send_request(const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args);
+
+// Expects a NULL terminated sequnce of pointer to chrpc_value_t's
+chrpc_status_t _chrpc_client_send_request_va(const char *name, chrpc_value_t **ret, ...);
+
+#define chrpc_client_send_request_va(name, ret, ...) \
+    _chrpc_client_send_request_va(name, ret, __VA_ARGS__, NULL)
+
+static inline chrpc_status_t chrpc_client_send_argless_request(const char *name, chrpc_value_t **ret) {
+    return chrpc_client_send_request(name, ret, NULL, 0);
+}
 
 #endif
