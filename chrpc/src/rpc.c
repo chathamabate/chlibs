@@ -196,6 +196,117 @@ static chrpc_status_t chrpc_send_error_response(channel_t *chn, chrpc_server_t *
     return CHRPC_SUCCESS;
 }
 
+// Accounts for NULL being passed in, this is only really used for comparing return value
+// types from endpoint inner fucntions.
+static inline bool chrpc_type_equals_wrapper(const chrpc_type_t *ct, const chrpc_value_t *cv) {
+    if (ct == NULL && cv == NULL) {
+        return true;
+    }
+
+    if (ct != NULL || cv != NULL) {
+        return false;
+    }
+
+    return chrpc_type_equals(ct, cv->type);
+}
+
+// This will craft and send a response to the given endpoint using the given buffer.
+// This assumes the args array is already populated with arguments of the expected types.
+static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_value_t **args, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+    chrpc_server_command_t cmd;
+
+    chrpc_value_t *ret_val = NULL;
+    cmd = ep->func(server, &ret_val, args, ep->num_args);
+
+    if (!chrpc_type_equals_wrapper(ep->ret, ret_val)) {
+        if (ret_val) {
+            delete_chrpc_value(ret_val);
+        }
+        return CHRPC_SERVER_INTERNAL_ERROR;
+    }
+
+    // FINALLY A SUCCESS!
+
+    // OK, this is when things get slightly hacky.
+    // Because the response structure is very simple, we are going to serialize on the fly here...
+    // This way we don't need to copy between a bunch of different buffers.
+    
+    const size_t mms = server->attrs.max_msg_size;
+
+    size_t total_written = 0;
+
+    size_t written;
+    chrpc_status_t status;
+
+    status = chrpc_type_to_buffer(server->resp_type, buf, server->attrs.max_msg_size, &written);
+    total_written += written;
+
+    // Write status flag.
+    if (status == CHRPC_SUCCESS) {
+        // We don't have room for the status flag :(
+        if (mms - total_written < sizeof(uint8_t)) {
+            status = CHRPC_BUFFER_TOO_SMALL;
+        } else {
+            buf[total_written] = CHRPC_SUCCESS;
+            total_written += sizeof(uint8_t);
+        }
+    }
+
+    uint32_t *serial_len = NULL;
+
+    // Reserve space for array length.
+    if (status == CHRPC_SUCCESS) {
+        if (mms - total_written < sizeof(uint32_t)) {
+            status = CHRPC_BUFFER_TOO_SMALL;
+        } else {
+            // Remember where we will eventually write serial length.
+            serial_len = (uint32_t *)(buf + total_written);
+            total_written += sizeof(uint32_t);
+        }
+    }
+
+    // Attempt to serialize return value.
+    if (status == CHRPC_SUCCESS) {
+        status = chrpc_value_to_buffer(ret_val, buf + total_written, mms - total_written, &written);
+    }
+
+    // Store length of serialized value in bytes. 
+    if (status == CHRPC_SUCCESS) {
+        *serial_len = written;
+        total_written += written;
+    }
+
+    // Finally, done with return value.
+    delete_chrpc_value(ret_val);
+
+    // Was there an error serializing?
+    if (status != CHRPC_SUCCESS) {
+        return chrpc_send_error_response(chn, server, buf, status);
+    }
+
+    // Otherwise, we can attempt to send our message!
+
+    channel_status_t chn_status = chn_send(chn, buf, total_written);
+
+    // If our message is too big, we can still send a valid response to the client.
+    if (chn_status == CHN_INVALID_MSG_SIZE) {
+        return chrpc_send_error_response(chn, server, buf, CHRPC_BUFFER_TOO_SMALL);
+    }
+
+    // If there is some other channel error, this is seen as non-recoverable,
+    // don't even try to send an error code to the client.
+    if (chn_status != CHN_SUCCESS) {
+        return CHRPC_CLIENT_CHANNEL_ERROR;        
+    }
+
+    // Otherwise, things were actually sent successfully!
+    if (cmd == CHRPC_SC_DISCONNECT) {
+        return CHRPC_DISCONNECT;
+    }
+
+    return CHRPC_SUCCESS;
+}
+
 static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
     // Valid Chrpc Value found, is it the correct type tho?
     if (!chrpc_type_equals(server->req_type, req->type)) {
@@ -217,19 +328,66 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
         return chrpc_send_error_response(chn, server, buf, CHRPC_ARGUMENT_MISMATCH);
     }
 
-    // Does each argument value actually match the expected type??
-    // Something to think about!
+    chrpc_status_t status = CHRPC_SUCCESS;
+    chrpc_value_t **given_args = (chrpc_value_t **)safe_malloc(sizeof(chrpc_value_t *) * ep->num_args);
 
-    // Ok, now we need to actually construct the function call!
+    uint8_t parsed_values = 0;
 
-    // Now we parse every argument... make sure their types are correct,
-    // then pass them into the function!
-
-    // Kinda hard tbh...
     for (uint8_t i = 0; i < ep->num_args; i++) {
-        
+        uint8_t *field_buf = arg_arrays->array_entries[i]->b8_arr;
+        uint32_t field_buf_len = arg_arrays->array_entries[i]->array_len;
+
+        chrpc_value_t *field;
+
+        size_t readden; // somewhat unused
+        status = chrpc_value_from_buffer(&field, field_buf, field_buf_len, &readden);
+
+        if (status != CHRPC_SUCCESS) {
+            break;
+        }
+
+        // We successfully parsed a value.
+        parsed_values++;
+
+        // Store our parsed field.
+        given_args[i] = field;
+
+        if (!chrpc_type_equals(ep->args[i], field->type)) {
+            status = CHRPC_ARGUMENT_MISMATCH;
+            break;
+        }
     }
 
+    if (status == CHRPC_SUCCESS) {
+        // Call the send respone function! 
+    }
+
+    // This is going to start getting annoying real quick IMO.
+
+    // Probably will have this be a goto or smth.
+    if (status != CHRPC_SUCCESS) {
+        // Error parsing arguments
+    }
+
+    // We have our successfully parsed and matched argument values!
+    // Time to feed them into the endpoint.
+
+    chrpc_value_t *ret_val;
+    chrpc_server_command_t server_command;
+
+    server_command = ep->func(server->server_state, &ret_val, given_args, ep->num_args);
+
+    if (!chrpc_type_equals_wrapper(ep->ret, ret_val->type)) {
+        // Return type mismatch!
+    }
+
+    // THIS IS HELLA HARD... I need to write the return value to a buffer....
+    // Copy that buffer over to a new dynamic buffer...
+    // UGH... Eh, I could craft the response from hand....?
+    // Would that be hacky AF???
+    // Yeah, tbh, I think it would...
+    // Give no length if NULL???
+    // UGH THIS IS SO FUCKING HARD.
 
 
 
@@ -376,6 +534,10 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, chrpc_server_
             new_chrpc_array_type(CHRPC_BYTE_T)
         )
     );
+    s->resp_type = new_chrpc_struct_type(
+        CHRPC_STRING_T,
+        new_chrpc_array_type(CHRPC_BYTE_T)
+    );
 
     // Finally, spawn workers....
     size_t i;
@@ -416,6 +578,7 @@ void delete_chrpc_server(chrpc_server_t *server) {
     // Finally, delete endpoint set.
     delete_chrpc_endpoint_set((chrpc_endpoint_set_t *)(server->ep_set));
     delete_chrpc_type((chrpc_type_t *)(server->req_type));
+    delete_chrpc_type((chrpc_type_t *)(server->resp_type));
 
     safe_free(server);
 }

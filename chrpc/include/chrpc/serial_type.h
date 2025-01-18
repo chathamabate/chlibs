@@ -42,6 +42,8 @@ typedef uint8_t chrpc_status_t;
 #define CHRPC_CLIENT_CHANNEL_EMTPY 11
 #define CHRPC_CLIENT_CHANNEL_ERROR 12 
 #define CHRPC_BAD_REQUEST 13
+#define CHRPC_SERVER_INTERNAL_ERROR 14
+#define CHRPC_DISCONNECT 15
 
 typedef uint8_t chrpc_type_id_t;
 

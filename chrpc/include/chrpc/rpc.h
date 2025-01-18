@@ -162,6 +162,7 @@ typedef struct _chrpc_server_t {
     // This will be allocated for every server state.
     // It will point to the type that all requests should have.
     const chrpc_type_t *req_type;
+    const chrpc_type_t *resp_type;
 } chrpc_server_t;
 
 // NOTE: Here are some notes on server internal workflow...
