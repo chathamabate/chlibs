@@ -798,6 +798,31 @@ chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *nam
 }
 
 chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char *name, chrpc_value_t **ret, ...) {
-    return CHRPC_SUCCESS;
+    va_list args;
+    va_start(args, ret);
+
+    chrpc_value_t *iter;
+    list_t *l = new_list(ARRAY_LIST_IMPL, sizeof(chrpc_value_t *));
+
+    while ((iter = va_arg(args, chrpc_value_t *))) {
+        l_push(l, &iter);
+    }
+
+    va_end(args);
+
+    size_t num_args = l_len(l);
+
+    if (CHRPC_ENDPOINT_MAX_ARGS < num_args) {
+        delete_list(l);
+        return CHRPC_TOO_MANY_ARGUMENTS;
+    }
+
+    chrpc_value_t **args_arr = delete_and_move_list(l);
+
+    chrpc_status_t s;
+    s = chrpc_client_send_request(client, name, ret, args_arr, num_args);
+    safe_free(args_arr);
+
+    return s;
 }
 
