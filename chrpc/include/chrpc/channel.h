@@ -71,6 +71,9 @@ typedef channel_status_t (*channel_incoming_len_ft)(void *chn, size_t *len);
 //
 // NOTE: This can be implemented to block until a message is ready to be received.
 // Or, it can be implemented to return CHN_NO_INCOMING_MSG.
+//
+// NOTE: You should call channel_refresh before calling this function, However,
+// you should not need to call channel_incoming_len before this function.
 typedef channel_status_t (*channel_receive_ft)(void *chn, void *buf, size_t len, size_t *readden); 
 
 // NOTE: None of the below functions given need to check arguments.

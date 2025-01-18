@@ -36,6 +36,12 @@ typedef uint8_t chrpc_status_t;
 #define CHRPC_STRUCT_TYPE_TOO_LARGE 5
 #define CHRPC_MALFORMED_TYPE 6
 #define CHRPC_SERVER_CREATION_ERROR 7
+#define CHRPC_SERVER_FULL 8
+#define CHRPC_UKNOWN_ENDPOINT 9
+#define CHRPC_ARGUMENT_MISMATCH 10
+#define CHRPC_CLIENT_CHANNEL_EMTPY 11
+#define CHRPC_CLIENT_CHANNEL_ERROR 12 
+#define CHRPC_BAD_REQUEST 13
 
 typedef uint8_t chrpc_type_id_t;
 

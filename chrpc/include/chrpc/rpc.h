@@ -13,6 +13,7 @@
 
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
+#define CHRPC_SERVER_BUF_MIN_SIZE 200
 
 typedef enum _chrpc_server_command_t {
 
@@ -20,7 +21,7 @@ typedef enum _chrpc_server_command_t {
     CHRPC_SC_DISCONNECT = 0,
 
     // Return a channel to the channel queue after sending across a return value.
-    CHRPC_SC_KEEP_ALIVE
+    CHRPC_SC_KEEP_ALIVE,
 
     // Maybe add more...
 } chrpc_server_command_t;
@@ -117,6 +118,10 @@ typedef struct _chrpc_server_attrs_t {
 } chrpc_server_attrs_t;
 
 typedef struct _chrpc_server_t {
+    // User defined, can be NULL.
+    // (Remember, if actually stateful, it is the user's responsibility to synchronize!)
+    void *server_state;
+
     chrpc_server_attrs_t attrs;
 
     // NOTE: q_mut encloses num_channels and channels_q.
@@ -151,7 +156,50 @@ typedef struct _chrpc_server_t {
     // NOTE: While this is marked const, it is OWNED by the server.
     // Thus, it will be deleted by the server when the server itself is deleted.
     const chrpc_endpoint_set_t *ep_set;
+
+    // Same as ep_set, NEVER CHANGE THIS.
+    //
+    // This will be allocated for every server state.
+    // It will point to the type that all requests should have.
+    const chrpc_type_t *req_type;
 } chrpc_server_t;
+
+// NOTE: Here are some notes on server internal workflow...
+//
+// The server will enforce that all owned channel's have a max message size less
+// than some known value. This gaurantees that incoming messages can always be 
+// received by the server!
+//
+// Expected RPC message format type:
+//
+// {
+//      str;    // function name
+//      b8[][]; // Array of arguments (Must be parsed server side)
+// }
+//
+// Expected RPC return message format:
+//
+// {
+//      b8;     // Status
+//      b8[];   // Return Value (Not populated if void function, or error)
+// }
+// 
+// When receiving or sending messages, if there is a recoverable error,
+// the error will be returned over the channel. The channel will remain in the server's
+// channel queue.
+//
+// Recoverable Errors:
+//  * The given function name doesn't match any endpoints.
+//  * The given arguments, don't match the expected types.
+//  * The given arguments are malformed and fail on parse.
+//  * The return value is to large for the receiving channel.
+//
+// If there is a non-recoverable error, the channel will be destroyed and deleted from the
+// server's queue.
+//
+// Non-Recoverable Errors:
+//  * There is a fatal channel error.
+//  * The channel's max-message-size is too small to even be sent an error message.
 
 // As the chrpc server will spawn threads, it is possible this call fails.
 // For example, if this process has already spawned the maximum number of threads.
@@ -160,12 +208,13 @@ typedef struct _chrpc_server_t {
 //
 // NOTE: The created server assumes ownership of the given endpoint set.
 // When the server is deleted, so is the endpoint set.
-chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps);
+chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps);
 void delete_chrpc_server(chrpc_server_t *server);
 
-// Returns 0, if ownership of the channel is successfully given to the server.
-// Returns 1, if an error occurs (Most likely, the server is already full).
+// Returns CHRPC_SUCCESS, if ownership of the channel is successfully given to the server.
+// Returns CHRPC_SERVER_FULL, if the server cannot accept anymroe channels at this time.
 // In this case, it is the user's responsibility to cleanup the channel.
-int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn);
+chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn);
+
 
 #endif

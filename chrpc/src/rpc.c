@@ -1,6 +1,7 @@
 
 #include "chrpc/channel.h"
 #include "chrpc/serial_type.h"
+#include "chrpc/serial_value.h"
 #include "chsys/mem.h"
 #include "chsys/wrappers.h"
 #include "chutil/list.h"
@@ -168,28 +169,121 @@ const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep
     return *ep;
 }
 
-// In buf will have size server->attrs.max_msg_size.
-static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server, uint8_t *in_buf) {
-    chrpc_status_t status;
+// This sends an error to the client.
+static chrpc_status_t chrpc_send_error_response(channel_t *chn, chrpc_server_t *server, uint8_t *buf, chrpc_status_t err) {
+    chrpc_status_t rpc_status;
+    channel_status_t chn_status;
 
-    TRY_CHANNEL_CALL(chn_refresh(chn));
+    chrpc_value_t *err_val = new_chrpc_struct_value_va(
+        new_chrpc_b8_value(err),
+        new_chrpc_b8_empty_array_value() // empty return value.
+    );
 
-    size_t incoming_len;
-    TRY_CHANNEL_CALL(chn_incoming_len(chn, &incoming_len));
+    size_t written;
+    rpc_status = chrpc_value_to_buffer(err_val, buf, server->attrs.max_msg_size, &written);
+    delete_chrpc_value(err_val);
 
-    // We make it here, incoming_len is non-zero.
+    // Really, this should never happen IMO. 
+    if (rpc_status != CHRPC_SUCCESS) {
+        return rpc_status;
+    }
 
-    size_t readden;
-    TRY_CHANNEL_CALL(chn_receive(chn, in_buf, server->attrs.max_msg_size, &readden));
+    chn_status = chn_send(chn, buf, written);
+    if (chn_status != CHN_SUCCESS) {
+        return CHRPC_CLIENT_CHANNEL_ERROR;
+    }
+
+    return CHRPC_SUCCESS;
+}
+
+static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+    // Valid Chrpc Value found, is it the correct type tho?
+    if (!chrpc_type_equals(server->req_type, req->type)) {
+        return chrpc_send_error_response(chn, server, buf, CHRPC_BAD_REQUEST);
+    }
+
+    const char *endpoint_name = req->value->struct_entries[0]->str;
+    const chrpc_inner_value_t *arg_arrays = req->value->struct_entries[1];
+
+    // Now, let's lookup our endpoint.
+    const chrpc_endpoint_t *ep = chrpc_endpoint_set_lookup(server->ep_set, endpoint_name);
+
+    // Couldn't find an endpoint.
+    if (!ep) {
+        return chrpc_send_error_response(chn, server, buf, CHRPC_UKNOWN_ENDPOINT);
+    }
+
+    if (ep->num_args != arg_arrays->array_len) {
+        return chrpc_send_error_response(chn, server, buf, CHRPC_ARGUMENT_MISMATCH);
+    }
+
+    // Does each argument value actually match the expected type??
+    // Something to think about!
+
+    // Ok, now we need to actually construct the function call!
+
+    // Now we parse every argument... make sure their types are correct,
+    // then pass them into the function!
+
+    // Kinda hard tbh...
+    for (uint8_t i = 0; i < ep->num_args; i++) {
+        
+    }
+
+
+
 
     // Now what, we parse a value???
     // If there is an error here, I believe we send stuff back???
     return CHRPC_SUCCESS; 
 }
 
+
+// In buf will have size server->attrs.max_msg_size.
+static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+    chrpc_status_t status;
+
+    if (chn_refresh(chn) != CHN_SUCCESS) {
+        return CHRPC_CLIENT_CHANNEL_ERROR;
+    }
+
+    // NOTE: we know that the channel has a max message size less than the size of buf,
+    // we should be able to call receive without worrying about buf being overflowed.
+
+    size_t msg_size;
+    status = chn_receive(chn, buf, server->attrs.max_msg_size, &msg_size);
+    if (status == CHN_NO_INCOMING_MSG) {
+        return CHRPC_CLIENT_CHANNEL_EMTPY;
+    }
+
+    if (status != CHN_SUCCESS) {
+        return CHRPC_CLIENT_CHANNEL_ERROR;
+    }
+
+    chrpc_value_t *req;
+
+    size_t readden; // somewhat unused here.
+    status = chrpc_value_from_buffer(&req, buf, msg_size, &readden);
+
+    // Probably some sort of syntax error/end of buffer.
+    if (status != CHRPC_SUCCESS) {
+        return chrpc_send_error_response(chn, server, buf, status);
+    }
+
+    status = chrpc_handle_request(req, chn, server, buf);
+
+    delete_chrpc_value(req);
+
+    return status;
+}
+
 static void *chrpc_server_worker_routine(void *arg) {
     chrpc_server_t *server = (chrpc_server_t *)arg;
-    uint8_t *in_buf = (uint8_t *)safe_malloc(server->attrs.max_msg_size);
+
+    // This buffer will be populated when receiving messages,
+    // then written over when serializing the response.
+    // (I don't think I really need 2 buffers for this)
+    uint8_t *buf = (uint8_t *)safe_malloc(server->attrs.max_msg_size);
 
     while (true) {
 
@@ -199,7 +293,7 @@ static void *chrpc_server_worker_routine(void *arg) {
         safe_pthread_mutex_unlock(&(server->should_exit_mut));
 
         if (should_exit) {
-            safe_free(in_buf);
+            safe_free(buf);
             return NULL;
         }
 
@@ -220,9 +314,10 @@ static void *chrpc_server_worker_routine(void *arg) {
         // If we make it here, we have a channel, to work with.
         // Let's call our poll helper function.
         // This function will do the work of attempting to read an incoming message.
-        chrpc_status_t status = chrpc_poll_channel(chn, server, in_buf);
+        chrpc_status_t status = chrpc_poll_channel(chn, server, buf);
 
-        if (status != CHN_NO_INCOMING_MSG && status != CHN_SUCCESS) {
+        if (status != CHRPC_SUCCESS && status != CHRPC_CLIENT_CHANNEL_EMTPY) {
+            // Fatal Error Case!
             delete_channel(chn);
 
             safe_pthread_mutex_lock(&(server->q_mut));
@@ -234,7 +329,7 @@ static void *chrpc_server_worker_routine(void *arg) {
 
         // SUCCESS or NO INCOMING MESSAGE.
             
-        if (status == CHN_NO_INCOMING_MSG) {
+        if (status == CHRPC_CLIENT_CHANNEL_EMTPY) {
             // If no work was done, sleep a lil'
             usleep(server->attrs.worker_usleep_amt);
         }
@@ -249,9 +344,9 @@ static void *chrpc_server_worker_routine(void *arg) {
     return NULL;
 }
 
-chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps) {
+chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps) {
     // Just as a not, my argument checking is usually kinda arbitrary.
-    if (!server || attrs.max_connections == 0 || attrs.num_workers == 0 || attrs.max_msg_size == 0) {
+    if (!server || attrs.max_connections == 0 || attrs.num_workers == 0 || attrs.max_msg_size < CHRPC_SERVER_BUF_MIN_SIZE) {
         return CHRPC_SERVER_CREATION_ERROR;
     }
 
@@ -260,6 +355,8 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t at
     }
 
     chrpc_server_t *s = (chrpc_server_t *)safe_malloc(sizeof(chrpc_server_t));
+
+    s->server_state = ss;
     s->attrs = attrs;
 
     safe_pthread_mutex_init(&(s->q_mut), NULL);
@@ -271,6 +368,14 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, chrpc_server_attrs_t at
     s->should_exit = false;
 
     s->ep_set = eps;
+    s->req_type = new_chrpc_struct_type(
+        CHRPC_STRING_T,     // Endpoint name.
+
+        // b8[][] array of serialized arguments!
+        new_chrpc_array_type(
+            new_chrpc_array_type(CHRPC_BYTE_T)
+        )
+    );
 
     // Finally, spawn workers....
     size_t i;
@@ -310,19 +415,21 @@ void delete_chrpc_server(chrpc_server_t *server) {
 
     // Finally, delete endpoint set.
     delete_chrpc_endpoint_set((chrpc_endpoint_set_t *)(server->ep_set));
+    delete_chrpc_type((chrpc_type_t *)(server->req_type));
+
     safe_free(server);
 }
 
-int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn) {
+chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn) {
     if (!chn) {
-        return 1;
+        return CHRPC_ARGUMENT_MISMATCH;
     }
 
     size_t mms;
     chrpc_status_t status = chn_max_msg_size(chn, &mms);
 
     if (status != CHRPC_SUCCESS || server->attrs.max_msg_size < mms) {
-        return 1;
+        return CHRPC_BUFFER_TOO_SMALL;
     }
 
     int ret_val;
@@ -330,11 +437,11 @@ int chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn) {
     safe_pthread_mutex_lock(&(server->q_mut));
 
     if (server->num_channels == q_cap(server->channels_q)) {
-        ret_val = 1;
+        ret_val = CHRPC_SERVER_FULL;
     } else {
         q_push(server->channels_q, &chn);
         server->num_channels++; 
-        ret_val = 0;
+        ret_val = CHRPC_SUCCESS;
     }
 
     safe_pthread_mutex_unlock(&(server->q_mut));
