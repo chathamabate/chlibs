@@ -238,7 +238,7 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     size_t written;
     chrpc_status_t status;
 
-    status = chrpc_type_to_buffer(server->resp_type, buf, server->attrs.max_msg_size, &written);
+    status = chrpc_type_to_buffer(server->resp_type, buf + total_written, server->attrs.max_msg_size, &written);
     total_written += written;
 
     // Write status flag.
@@ -252,33 +252,10 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
         }
     }
 
-    uint32_t *serial_len = NULL;
-
-    // Reserve space for array length.
+    // Now serialize response value.
     if (status == CHRPC_SUCCESS) {
-        if (mms - total_written < sizeof(uint32_t)) {
-            status = CHRPC_BUFFER_TOO_SMALL;
-        } else {
-            // Remember where we will eventually write serial length.
-            serial_len = (uint32_t *)(buf + total_written);
-            total_written += sizeof(uint32_t);
-        }
-    }
-
-    // Attempt to serialize return value.
-    if (status == CHRPC_SUCCESS) {
-        if (ret_val) {
-            status = chrpc_value_to_buffer(ret_val, buf + total_written, mms - total_written, &written);
-        } else {
-            // Void return value means no bytes!
-            written = 0;
-            status = CHRPC_SUCCESS;
-        }
-    }
-
-    // Store length of serialized value in bytes. 
-    if (status == CHRPC_SUCCESS) {
-        *serial_len = written;
+        // Remeber, for this call specifically, ret_val can be NULL.
+        status = chrpc_value_to_buffer_with_length(ret_val, buf + total_written, mms - total_written, &written); 
         total_written += written;
     }
 
@@ -667,7 +644,13 @@ chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *nam
     // NOTE: again, we are going to do this in a slightly hacky manner once again.
     // Going to serialize on the fly.
 
-    chrpc_status_t status;
+    chrpc_status_t rpc_status;
+    channel_status_t chn_status;
+
+    // A fatal error has happened once before.
+    if (!(client->chn)) {
+        return CHRPC_CLIENT_CHANNEL_ERROR; 
+    }
 
     size_t buf_len = client->buf_len;
     uint8_t *buf = client->buf;
@@ -675,15 +658,14 @@ chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *nam
     size_t total_written = 0;
     size_t written;
 
-    status = chrpc_type_to_buffer(client->req_type, buf + total_written, buf_len - total_written, &written);
+    rpc_status = chrpc_type_to_buffer(client->req_type, buf + total_written, buf_len - total_written, &written);
 
-    if (status != CHRPC_SUCCESS) {
-        return status;
+    if (rpc_status != CHRPC_SUCCESS) {
+        return rpc_status;
     }
 
     // Now string name.
     size_t name_len = strlen(name) + 1;
-
     if (buf_len - total_written < sizeof(uint32_t) + name_len) {
         return CHRPC_BUFFER_TOO_SMALL;
     }
@@ -699,8 +681,120 @@ chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *nam
         return CHRPC_BUFFER_TOO_SMALL;
     }
 
+    *(uint32_t *)(buf + total_written) = num_args;
+    total_written += sizeof(uint32_t);
 
-    return CHRPC_SUCCESS;
+    for (uint8_t i = 0; i < num_args; i++) {
+        rpc_status = chrpc_value_to_buffer_with_length(args[i], buf + total_written, buf_len - total_written, &written);
+
+        if (rpc_status != CHRPC_SUCCESS) {
+            return rpc_status;
+        }
+
+        total_written += written;
+    }
+
+    // Now attempt to send our request.
+
+    chn_status = chn_send(client->chn, buf, total_written);
+
+    // NOTE: It is gauranteed that the channel can handle the buffer's size.
+    // So, we should never get some invalid message size error.
+    // Any other error is seen as fatal for the channel.
+    if (chn_status != CHN_SUCCESS) {
+        delete_channel(client->chn);
+        client->chn = NULL;
+
+        return CHRPC_CLIENT_CHANNEL_ERROR;
+    }
+
+    // Now we poll.
+
+    size_t readden;
+    bool message_received = false;
+    useconds_t time_waited = 0;
+
+    while (time_waited < client->attrs.timeout) {
+        // Before every sleep we poll the channel.
+        chn_status = chn_receive(client->chn, buf, buf_len, &readden);
+
+        if (chn_status == CHN_SUCCESS) {
+            message_received = true;
+            break;
+        }
+
+        // fatal error.
+        if (chn_status != CHN_NO_INCOMING_MSG) {
+            break;
+        }
+
+        usleep(client->attrs.cadence);
+        time_waited += client->attrs.cadence;
+    }
+
+    // No message was received :,(
+    if (!message_received) {
+        delete_channel(client->chn);
+        client->chn = NULL;
+
+        // Timeout.
+        if (chn_status == CHN_NO_INCOMING_MSG) {
+            return CHRPC_DISCONNECT;
+        }
+
+        return CHRPC_CLIENT_CHANNEL_ERROR;
+    }
+
+    // Now we parse the response.
+    
+    chrpc_value_t *resp;
+
+    rpc_status = chrpc_value_from_buffer(&resp, buf, buf_len, &readden);
+
+    if (rpc_status != CHRPC_SUCCESS) {
+        return CHRPC_BAD_RESPONSE;
+    }
+
+    if (!chrpc_type_equals(client->resp_type, resp->type)) {
+        delete_chrpc_value(resp);
+        return CHRPC_BAD_RESPONSE;
+    }
+
+    // Status code of response.
+    rpc_status = resp->value->struct_entries[0]->b8;
+    
+    if (rpc_status != CHRPC_SUCCESS) {
+        delete_chrpc_value(resp);
+        return rpc_status;
+    }
+
+    // Now, we must parse the return value.
+
+    chrpc_value_t *ret_val = NULL;
+
+    uint32_t serial_len = resp->value->struct_entries[1]->array_len;
+    uint8_t *serial_ret_val = resp->value->struct_entries[1]->b8_arr;
+
+    if (serial_len > 0) {
+        rpc_status = chrpc_value_from_buffer(&ret_val, serial_ret_val, serial_len, &readden);
+    }
+
+    // This is entered when there is no return value, or when the return value is succesfully parsed!
+    if (rpc_status == CHRPC_SUCCESS) {
+        if (ret) {
+            *ret = ret_val;
+        } else if (ret_val) {
+            // Kinda hacky here, this is the case we are not given a pointer to store the return value,
+            // but a value is returned. Instead of doing some error situation, I'd rather just delete the
+            // return value and call it a day.
+            delete_chrpc_value(ret_val);
+        }
+    }
+
+    // Always delete the response.
+    delete_chrpc_value(resp);
+
+    return rpc_status;
 }
 
 chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char *name, chrpc_value_t **ret, ...) {
