@@ -390,7 +390,8 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
 
 // In buf will have size server->attrs.max_msg_size.
 static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
-    chrpc_status_t status;
+    chrpc_status_t rpc_status;
+    channel_status_t chn_status;
 
     if (chn_refresh(chn) != CHN_SUCCESS) {
         return CHRPC_CLIENT_CHANNEL_ERROR;
@@ -400,30 +401,30 @@ static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server,
     // we should be able to call receive without worrying about buf being overflowed.
 
     size_t msg_size;
-    status = chn_receive(chn, buf, server->attrs.max_msg_size, &msg_size);
-    if (status == CHN_NO_INCOMING_MSG) {
+    chn_status = chn_receive(chn, buf, server->attrs.max_msg_size, &msg_size);
+    if (chn_status == CHN_NO_INCOMING_MSG) {
         return CHRPC_CLIENT_CHANNEL_EMTPY;
     }
 
-    if (status != CHN_SUCCESS) {
+    if (chn_status != CHN_SUCCESS) {
         return CHRPC_CLIENT_CHANNEL_ERROR;
     }
 
     chrpc_value_t *req;
 
     size_t readden; // somewhat unused here.
-    status = chrpc_value_from_buffer(&req, buf, msg_size, &readden);
+    rpc_status = chrpc_value_from_buffer(&req, buf, msg_size, &readden);
 
     // Probably some sort of syntax error/end of buffer.
-    if (status != CHRPC_SUCCESS) {
-        return chrpc_send_error_response(chn, server, buf, status);
+    if (rpc_status != CHRPC_SUCCESS) {
+        return chrpc_send_error_response(chn, server, buf, rpc_status);
     }
 
-    status = chrpc_handle_request(req, chn, server, buf);
+    rpc_status = chrpc_handle_request(req, chn, server, buf);
 
     delete_chrpc_value(req);
 
-    return status;
+    return rpc_status;
 }
 
 static void *chrpc_server_worker_routine(void *arg) {
@@ -538,7 +539,7 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, chrpc_server_
         )
     );
     s->resp_type = new_chrpc_struct_type(
-        CHRPC_STRING_T,
+        CHRPC_BYTE_T,
         new_chrpc_array_type(CHRPC_BYTE_T)
     );
 
@@ -614,3 +615,59 @@ chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn)
 
     return ret_val;
 }
+
+chrpc_status_t new_chrpc_client(chrpc_client_t **client, channel_t *chn, chrpc_client_attrs_t attrs) {
+    if (!chn || attrs.cadence == 0 || attrs.cadence == 0) {
+        return CHRPC_CLIENT_CREATION_ERROR;
+    }
+
+    channel_status_t chn_status;
+
+    size_t mms;
+    chn_status = chn_max_msg_size(chn, &mms);
+
+    if (chn_status != CHN_SUCCESS) {
+        return CHRPC_CLIENT_CHANNEL_ERROR;
+    }
+
+    chrpc_client_t *c = (chrpc_client_t *)safe_malloc(sizeof(chrpc_client_t));
+
+    c->attrs = attrs;
+    c->chn = chn;
+
+    c->buf_len = mms;
+    c->buf = (uint8_t *)safe_malloc(mms);
+
+    c->req_type = new_chrpc_struct_type(
+        CHRPC_STRING_T,
+        new_chrpc_array_type(
+            new_chrpc_array_type(CHRPC_BYTE_T)
+        )
+    );
+    c->resp_type = new_chrpc_struct_type(
+        CHRPC_BYTE_T,
+        new_chrpc_array_type(CHRPC_BYTE_T)
+    );
+
+    *client = c;
+    return CHRPC_SUCCESS;
+}
+
+void delete_chrpc_client(chrpc_client_t *client) {
+    // It's possible the underlying channel was already destroyed earlier.
+    if (client->chn) {
+        delete_channel(client->chn);
+    }
+
+    safe_free(client->buf);
+    safe_free(client);
+}
+
+chrpc_status_t chrpc_client_send_request(const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args) {
+    return CHRPC_SUCCESS;
+}
+
+chrpc_status_t _chrpc_client_send_request_va(const char *name, chrpc_value_t **ret, ...) {
+    return CHRPC_SUCCESS;
+}
+

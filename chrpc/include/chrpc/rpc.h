@@ -16,7 +16,9 @@
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
 #define CHRPC_SERVER_BUF_MIN_SIZE 200
-#define CHRPC_CLIENT_DEFAULT_TIMEOUT 500
+
+#define CHRPC_CLIENT_DEFAULT_CADENCE 10000    // 10 ms cadence.
+#define CHRPC_CLIENT_DEFAULT_TIMEOUT 1000000  // 1s timeout.
 
 typedef enum _chrpc_server_command_t {
 
@@ -220,6 +222,14 @@ void delete_chrpc_server(chrpc_server_t *server);
 // In this case, it is the user's responsibility to cleanup the channel.
 chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn);
 
+typedef struct _chrpc_client_attrs_t {
+    // Frequency by which to check.
+    useconds_t cadence;
+
+    // At least how long to wait until giving up.
+    useconds_t timeout;
+} chrpc_client_attrs_t;
+
 typedef struct _chrpc_client_t {
     // The client will wait at least timeout microseconds for a response from the server.
     // If no response is received, the given channel will be destroyed and set to NULL.
@@ -233,22 +243,29 @@ typedef struct _chrpc_client_t {
     // buf's size will be the max message size of the channel.
     //
     // If the receivied response is malformed, the channel will persist.
-    useconds_t timeout;
+    chrpc_client_attrs_t attrs;
     channel_t *chn;
 
     // Buf will be used for preparing serialized requests.
     size_t buf_len;
     uint8_t *buf;
 
-    // Will be created once.
+    // Would be nice not to need to have these allocated for every client/server
+    // instance, although, tbh, it's not very significant.
     const chrpc_type_t *req_type;
+    const chrpc_type_t *resp_type;
 } chrpc_client_t;
 
 // The given channel will be OWNED by the created client.
-chrpc_status_t new_chrpc_client_to(chrpc_client_t **client, channel_t *chn, useconds_t timeout);
+chrpc_status_t new_chrpc_client(chrpc_client_t **client, channel_t *chn, chrpc_client_attrs_t attrs);
 
-static inline chrpc_status_t new_chrpc_client(chrpc_client_t **client, channel_t *chn) {
-    return new_chrpc_client_to(client, chn, CHRPC_CLIENT_DEFAULT_TIMEOUT);
+static inline chrpc_status_t new_chrpc_default_client(chrpc_client_t **client, channel_t *chn) {
+    return new_chrpc_client(client, chn, 
+        (chrpc_client_attrs_t){
+            .cadence = CHRPC_CLIENT_DEFAULT_CADENCE,
+            .timeout = CHRPC_CLIENT_DEFAULT_TIMEOUT
+        }
+    );
 }
 
 void delete_chrpc_client(chrpc_client_t *client);
