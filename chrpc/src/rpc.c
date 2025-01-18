@@ -267,7 +267,13 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
 
     // Attempt to serialize return value.
     if (status == CHRPC_SUCCESS) {
-        status = chrpc_value_to_buffer(ret_val, buf + total_written, mms - total_written, &written);
+        if (ret_val) {
+            status = chrpc_value_to_buffer(ret_val, buf + total_written, mms - total_written, &written);
+        } else {
+            // Void return value means no bytes!
+            written = 0;
+            status = CHRPC_SUCCESS;
+        }
     }
 
     // Store length of serialized value in bytes. 
@@ -277,7 +283,9 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     }
 
     // Finally, done with return value.
-    delete_chrpc_value(ret_val);
+    if (ret_val) {
+        delete_chrpc_value(ret_val);
+    }
 
     // Was there an error serializing?
     if (status != CHRPC_SUCCESS) {
@@ -358,42 +366,25 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
         }
     }
 
-    if (status == CHRPC_SUCCESS) {
-        // Call the send respone function! 
-    }
-
-    // This is going to start getting annoying real quick IMO.
-
-    // Probably will have this be a goto or smth.
     if (status != CHRPC_SUCCESS) {
-        // Error parsing arguments
+        // There's been some kind of argument parsing error, let's send it 
+        // back to the client instead of actually calling the endpoint.
+
+        status = chrpc_send_error_response(chn, server, buf, status);
+    } else {
+        // Otherwise, things went well! Let's attempt to actually use our endpoint.
+
+        status = chrpc_send_response(ep, given_args, chn, server, buf);
     }
 
-    // We have our successfully parsed and matched argument values!
-    // Time to feed them into the endpoint.
+    // Regardless of what happened, let's clean up our arguments.
 
-    chrpc_value_t *ret_val;
-    chrpc_server_command_t server_command;
-
-    server_command = ep->func(server->server_state, &ret_val, given_args, ep->num_args);
-
-    if (!chrpc_type_equals_wrapper(ep->ret, ret_val->type)) {
-        // Return type mismatch!
+    for (uint8_t i = 0; i < parsed_values; i++) {
+        delete_chrpc_value(given_args[i]); 
     }
-
-    // THIS IS HELLA HARD... I need to write the return value to a buffer....
-    // Copy that buffer over to a new dynamic buffer...
-    // UGH... Eh, I could craft the response from hand....?
-    // Would that be hacky AF???
-    // Yeah, tbh, I think it would...
-    // Give no length if NULL???
-    // UGH THIS IS SO FUCKING HARD.
-
-
-
-    // Now what, we parse a value???
-    // If there is an error here, I believe we send stuff back???
-    return CHRPC_SUCCESS; 
+    safe_free(given_args);
+    
+    return status;
 }
 
 
@@ -472,8 +463,20 @@ static void *chrpc_server_worker_routine(void *arg) {
         // If we make it here, we have a channel, to work with.
         // Let's call our poll helper function.
         // This function will do the work of attempting to read an incoming message.
+        //
+        // It will also do the work of sending error messages back to the client when
+        // necessary.
+        //
+        // If an error occurs while working with the channel, but an error code is successfully
+        // sent back to the client, this field will be SUCCESS.
         chrpc_status_t status = chrpc_poll_channel(chn, server, buf);
 
+        // Basically any bubbled up code that is not a success or a no-op indicator
+        // will trigger a forced disconnect of the channel.
+        // 
+        // This is not always in the case of an error.
+        // For example, the user can return CHRPC_SC_DISCONNECT from their routine.
+        // This will cause CHRPC_DISCONNECT to be returned as a status.
         if (status != CHRPC_SUCCESS && status != CHRPC_CLIENT_CHANNEL_EMTPY) {
             // Fatal Error Case!
             delete_channel(chn);
