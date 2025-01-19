@@ -1,4 +1,7 @@
 
+#include "chrpc/channel.h"
+#include "chrpc/channel_local.h"
+#include "chrpc/channel_local2.h"
 #include "chrpc/serial_type.h"
 #include "unity/unity.h"
 
@@ -85,6 +88,17 @@ static void test_chrpc_endpoint_lookup(void) {
 
     delete_chrpc_endpoint_set(ep_set);
 }
+
+// Now for the real RPC tests.
+
+static void new_local_client(chrpc_server_t *server, const channel_local_config_t *cfg, 
+        channel_local2_core_t **core, chrpc_client_t **client) {
+    channel_status_t chn_status;
+
+
+    // Now for the client addition stuff...
+}
+
 
 void chrpc_rpc_tests(void) {
     RUN_TEST(test_chrpc_endpoint_create_and_delete);

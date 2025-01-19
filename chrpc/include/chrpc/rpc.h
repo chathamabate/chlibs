@@ -3,6 +3,7 @@
 #define CHRPC_RPC_H
 
 #include "chrpc/channel.h"
+#include "chrpc/channel_local2.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
 #include "chutil/map.h"
@@ -10,15 +11,14 @@
 #include "chutil/string.h"
 
 #include <pthread.h>
-#include <sys/_types/_useconds_t.h>
 #include <unistd.h>
 
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
 #define CHRPC_SERVER_BUF_MIN_SIZE 200
 
-#define CHRPC_CLIENT_DEFAULT_CADENCE 10000    // 10 ms cadence.
-#define CHRPC_CLIENT_DEFAULT_TIMEOUT 1000000  // 1s timeout.
+#define CHRPC_CLIENT_DEFAULT_CADENCE 50000    // 50 ms cadence.
+#define CHRPC_CLIENT_DEFAULT_TIMEOUT 5000000  // 5s timeout.
 
 typedef enum _chrpc_server_command_t {
 
@@ -286,5 +286,13 @@ chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char 
 static inline chrpc_status_t chrpc_client_send_argless_request(chrpc_client_t *client, const char *name, chrpc_value_t **ret) {
     return chrpc_client_send_request(client, name, ret, NULL, 0);
 }
+
+// This is a helper function that makes life easy.
+// It creates a local bi direction channel, adds one end to the server, and creates a client with the other end.
+//
+// NOTE: Just be careful... i.e., don't delete the core while the server still holds one end of the connection.
+// Remember that the local2 channel is kinda awkward to work with.
+chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, const channel_local_config_t *cfg,
+        channel_local2_core_t **core, chrpc_client_t **client);
 
 #endif

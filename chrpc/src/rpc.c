@@ -826,3 +826,56 @@ chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char 
     return s;
 }
 
+chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, const channel_local_config_t *cfg,
+        channel_local2_core_t **core, chrpc_client_t **client) {
+    chrpc_status_t rpc_status;
+
+    channel_status_t chn_status;
+
+    channel_local2_core_t *co = NULL;
+    chn_status = new_channel_local2_core(&co, cfg);
+
+    if (chn_status != CHN_SUCCESS) {
+        goto error_out; 
+    }
+
+    channel_local2_t *a2b = NULL;
+    channel_local2_config_t a2b_cfg = {
+        .a2b_direction = true,
+        .core = co
+    };
+    chn_status = new_channel_local2(&a2b, &a2b_cfg);
+
+    if (chn_status != CHN_SUCCESS) {
+        goto error_out; 
+    }
+
+    channel_local2_t *b2a = NULL;
+    channel_local2_config_t b2a_cfg = {
+        .a2b_direction = false,
+        .core = co
+    };
+    chn_status = new_channel_local2(&b2a, &b2a_cfg);
+
+    if (chn_status != CHN_SUCCESS) {
+        goto error_out; 
+    }
+
+    // Local channel has successfully been created.
+
+    chrpc_client_t *cl = NULL;
+    rpc_status = new_chrpc_default_client(&cl, a2b);
+    if (rpc_status != CHRPC_SUCCESS) {
+        goto error_out;
+    }
+
+    rpc_status = chrpc_server_give_channel();
+    
+    return CHRPC_SUCCESS;
+
+error_out:
+    if (a2b) {
+
+    }
+}
+
