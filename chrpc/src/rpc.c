@@ -1,5 +1,6 @@
 
 #include "chrpc/channel.h"
+#include "chrpc/channel_local2.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
 #include "chsys/mem.h"
@@ -637,6 +638,10 @@ void delete_chrpc_client(chrpc_client_t *client) {
     }
 
     safe_free(client->buf);
+
+    delete_chrpc_value((chrpc_value_t *)(client->req_type));
+    delete_chrpc_value((chrpc_value_t *)(client->resp_type));
+
     safe_free(client);
 }
 
@@ -826,55 +831,53 @@ chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char 
     return s;
 }
 
-chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, const channel_local_config_t *cfg,
+chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, 
+        const channel_local_config_t *cfg,
+        const chrpc_client_attrs_t *attrs,
         channel_local2_core_t **core, chrpc_client_t **client) {
-    chrpc_status_t rpc_status;
+    channel_local2_core_t *co;
+    channel_t *a2b;
+    channel_t *b2a;
 
     channel_status_t chn_status;
 
-    channel_local2_core_t *co = NULL;
-    chn_status = new_channel_local2_core(&co, cfg);
+    chn_status = new_channel_local2_pipe(cfg, &co, &a2b, &b2a);
 
     if (chn_status != CHN_SUCCESS) {
-        goto error_out; 
+        return CHRPC_CLIENT_CHANNEL_ERROR;
     }
 
-    channel_local2_t *a2b = NULL;
-    channel_local2_config_t a2b_cfg = {
-        .a2b_direction = true,
-        .core = co
-    };
-    chn_status = new_channel_local2(&a2b, &a2b_cfg);
+    chrpc_status_t rpc_status;
+    chrpc_client_t *cl;
 
-    if (chn_status != CHN_SUCCESS) {
-        goto error_out; 
-    }
+    rpc_status = new_chrpc_client(&cl, a2b, *attrs);
 
-    channel_local2_t *b2a = NULL;
-    channel_local2_config_t b2a_cfg = {
-        .a2b_direction = false,
-        .core = co
-    };
-    chn_status = new_channel_local2(&b2a, &b2a_cfg);
-
-    if (chn_status != CHN_SUCCESS) {
-        goto error_out; 
-    }
-
-    // Local channel has successfully been created.
-
-    chrpc_client_t *cl = NULL;
-    rpc_status = new_chrpc_default_client(&cl, a2b);
     if (rpc_status != CHRPC_SUCCESS) {
-        goto error_out;
+        delete_channel(a2b); 
+        delete_channel(b2a); 
+        delete_channel_local2_core(co);
+
+        return rpc_status;
     }
 
-    
+    // From this point on, a2b is owned by the client.
+
+    rpc_status = chrpc_server_give_channel(server, b2a);
+
+    if (rpc_status != CHRPC_SUCCESS) {
+        delete_chrpc_client(cl);
+
+        delete_channel(b2a); 
+        delete_channel_local2_core(co);
+
+        return rpc_status;
+    }
+
+    // Otherwise, Success!
+
+    *core = co;
+    *client = cl;
+
     return CHRPC_SUCCESS;
-
-error_out:
-    if (a2b) {
-
-    }
 }
 
