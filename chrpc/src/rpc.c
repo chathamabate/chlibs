@@ -869,7 +869,6 @@ chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, const channel_loca
         goto error_out;
     }
 
-    rpc_status = chrpc_server_give_channel();
     
     return CHRPC_SUCCESS;
 
