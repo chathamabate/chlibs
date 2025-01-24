@@ -1,6 +1,7 @@
 
 #include "chrpc/channel.h"
 #include "chrpc/channel_local2.h"
+#include "chrpc/serial_helpers.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
 #include "chsys/mem.h"
@@ -204,7 +205,7 @@ static inline bool chrpc_type_equals_wrapper(const chrpc_type_t *ct, const chrpc
         return true;
     }
 
-    if (ct != NULL || cv != NULL) {
+    if (ct == NULL || cv == NULL) {
         return false;
     }
 
@@ -217,7 +218,7 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     chrpc_server_command_t cmd;
 
     chrpc_value_t *ret_val = NULL;
-    cmd = ep->func(server, &ret_val, args, ep->num_args);
+    cmd = ep->func(server->server_state, &ret_val, args, ep->num_args);
 
     if (!chrpc_type_equals_wrapper(ep->ret, ret_val)) {
         if (ret_val) {
@@ -639,8 +640,8 @@ void delete_chrpc_client(chrpc_client_t *client) {
 
     safe_free(client->buf);
 
-    delete_chrpc_value((chrpc_value_t *)(client->req_type));
-    delete_chrpc_value((chrpc_value_t *)(client->resp_type));
+    delete_chrpc_type((chrpc_type_t *)(client->req_type));
+    delete_chrpc_type((chrpc_type_t *)(client->resp_type));
 
     safe_free(client);
 }
@@ -664,6 +665,7 @@ chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *nam
     size_t written;
 
     rpc_status = chrpc_type_to_buffer(client->req_type, buf + total_written, buf_len - total_written, &written);
+    total_written += written;
 
     if (rpc_status != CHRPC_SUCCESS) {
         return rpc_status;
@@ -720,7 +722,12 @@ chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *nam
     useconds_t time_waited = 0;
 
     while (time_waited < client->attrs.timeout) {
-        // Before every sleep we poll the channel.
+        // Before every sleep we refresh and poll the channel.
+        chn_status = chn_refresh(client->chn);
+        if (chn_status != CHN_SUCCESS) {
+            break;
+        }
+
         chn_status = chn_receive(client->chn, buf, buf_len, &readden);
 
         if (chn_status == CHN_SUCCESS) {
