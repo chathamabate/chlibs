@@ -7,7 +7,6 @@
 #include "chutil/string.h"
 #include "unity/unity.h"
 
-#include <_types/_uint32_t.h>
 #include <pthread.h>
 
 #include "chrpc/channel.h"
@@ -94,6 +93,15 @@ static chrpc_server_command_t basic_server_poll_msgs(basic_server_state_t *bss, 
     return CHRPC_SC_KEEP_ALIVE;
 }
 
+static chrpc_server_command_t basic_server_disconnect(basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+    (void)bss;
+    (void)ret;
+    (void)args;
+    (void)num_args;
+
+    return CHRPC_SC_DISCONNECT;
+}
+
 chrpc_server_t *new_basic_server(void) {
     chrpc_endpoint_set_t *eps = new_chrpc_endpoint_set_va(
         new_chrpc_endpoint_va(
@@ -121,7 +129,8 @@ chrpc_server_t *new_basic_server(void) {
 
             // Args.
             CHRPC_UINT32_T
-        )
+        ),
+        new_chrpc_endpoint_argless("disconnect", (chrpc_endpoint_ft)basic_server_disconnect, NULL)
     );
 
     basic_server_state_t *bss = (basic_server_state_t *)safe_malloc(sizeof(basic_server_state_t));
@@ -280,10 +289,15 @@ static void test_basic_server_correct_usage(void) {
     delete_basic_message(msg);
 
     delete_list(l);
+    
+    status = chrpc_client_send_argless_request(client, "disconnect", NULL);
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
 
-    delete_basic_server(server);
+    // Since our client is disowned from the server, we should be able to delete it here.
     delete_chrpc_client(client);
     delete_channel_local2_core(core);
+
+    delete_basic_server(server);
 }
 
 static void test_basic_server_incorrect_usage(void) {
@@ -323,8 +337,72 @@ static void test_basic_server_incorrect_usage(void) {
 
 // Could we maybe try some parrallel usage case?
 
+#define TEST_BASIC_PARALLEL_CLIENTS 5
+
+static void *test_basic_server_parallel_clients_routine(void *arg) {
+    chrpc_server_t *server = (chrpc_server_t *)arg;
+
+    chrpc_status_t status;
+
+    channel_local2_core_t *core;
+    chrpc_client_t *client;
+
+    status = new_chrpc_local_client(server, &BASIC_CHN_CFG, &BASIC_CLIENT_ATTRS, &core, &client);
+
+    // Send something and expect it back??
+
+    uint32_t iter = 0;
+
+    while (status == CHRPC_SUCCESS && iter < 10) {
+        uint32_t len;
+        status = basic_client_push_msg(client, &len, 1, "Hello");
+        iter++;
+    }
+
+    list_t *l;
+
+    if (status == CHRPC_SUCCESS)  {
+        status = basic_client_poll_msgs(client, &l, 10);
+    }
+
+    if (status == CHRPC_SUCCESS) {
+        basic_message_t **iter;
+        l_reset_iterator(l);
+        while ((iter = l_next(l))) {
+            delete_basic_message(*iter);
+        }
+        delete_list(l);
+    }
+
+    if (status == CHRPC_SUCCESS) {
+        status = chrpc_client_send_argless_request(client, "disconnect", NULL);
+    }
+
+    if (status == CHRPC_SUCCESS) {
+        delete_chrpc_client(client);
+        delete_channel_local2_core(core);
+    }
+
+    return NULL;
+}
+
+static void test_basic_server_parallel_clients(void) {
+    chrpc_server_t *server = new_basic_server();
+    
+    pthread_t client_workers[TEST_BASIC_PARALLEL_CLIENTS];
+    for (size_t i = 0; i < TEST_BASIC_PARALLEL_CLIENTS; i++) {
+        safe_pthread_create(&(client_workers[i]), NULL, test_basic_server_parallel_clients_routine, server);
+    }
+    for (size_t i = 0; i < TEST_BASIC_PARALLEL_CLIENTS; i++) {
+        safe_pthread_join(client_workers[i], NULL);
+    }
+
+    delete_basic_server(server);
+}
+
 void chrpc_simple_rpc_tests(void) {
     RUN_TEST(test_basic_server_creation);
     RUN_TEST(test_basic_server_correct_usage);
     RUN_TEST(test_basic_server_incorrect_usage);
+    RUN_TEST(test_basic_server_parallel_clients);
 }
