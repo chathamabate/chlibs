@@ -16,8 +16,9 @@ _TEST_SRCS   := main.c \
 				channel.c \
 				channel_local.c \
 				channel_local2.c \
-				rpc.c \
+				endpoints.c \
 				serial_type.c \
-				serial_value.c
+				serial_value.c \
+				simple_rpc.c
 
 include ../lib_builder_stub.mk

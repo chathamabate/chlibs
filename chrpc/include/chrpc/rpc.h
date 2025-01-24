@@ -217,6 +217,10 @@ typedef struct _chrpc_server_t {
 chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps);
 void delete_chrpc_server(chrpc_server_t *server);
 
+static inline void *chrpc_server_state(chrpc_server_t *server) {
+    return server->server_state;
+}
+
 // Returns CHRPC_SUCCESS, if ownership of the channel is successfully given to the server.
 // Returns CHRPC_SERVER_FULL, if the server cannot accept anymroe channels at this time.
 // In this case, it is the user's responsibility to cleanup the channel.

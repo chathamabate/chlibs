@@ -4,9 +4,10 @@
 #include "chrpc/serial_value.h"
 #include "chsys/sys.h"
 
-#include "rpc.h"
+#include "endpoints.h"
 #include "serial_type.h"
 #include "serial_value.h"
+#include "simple_rpc.h"
 #include "unity/unity.h"
 #include "unity/unity_internals.h"
 
@@ -30,7 +31,8 @@ int main(void) {
     channel_local2_tests();
     chrpc_serial_type_tests();
     chrpc_serial_value_tests();
-    chrpc_rpc_tests();
+    chrpc_rpc_endpoint_set_tests();
+    chrpc_simple_rpc_tests();
     safe_exit(UNITY_END());
 
 }
