@@ -15,7 +15,7 @@
 
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
-#define CHRPC_SERVER_BUF_MIN_SIZE 200
+#define CHRPC_SERVER_BUF_MIN_SIZE 0x80
 
 typedef enum _chrpc_server_command_t {
 

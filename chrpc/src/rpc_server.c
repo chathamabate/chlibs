@@ -575,7 +575,7 @@ chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn)
     size_t mms;
     chrpc_status_t status = chn_max_msg_size(chn, &mms);
 
-    if (status != CHRPC_SUCCESS || server->attrs.max_msg_size < mms) {
+    if (status != CHRPC_SUCCESS || mms < CHRPC_SERVER_BUF_MIN_SIZE || server->attrs.max_msg_size < mms) {
         return CHRPC_BUFFER_TOO_SMALL;
     }
 

@@ -84,6 +84,10 @@ static inline chrpc_status_t chrpc_client_send_argless_request(chrpc_client_t *c
 //
 // NOTE: Just be careful... i.e., don't delete the core while the server still holds one end of the connection.
 // Remember that the local2 channel is kinda awkward to work with.
+//
+// NOTE: VERY IMPORTANT: If you are going to use a local channel, understand that it won't be removed from the 
+// server's connections pull unless told explicitly to do so. (I.e. a disconnect endpoint)
+// This is because, closing one end of the channel, does nothing to the other.
 chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, 
         const channel_local_config_t *cfg,
         const chrpc_client_attrs_t *attrs,

@@ -103,6 +103,7 @@ static chrpc_server_command_t basic_server_disconnect(basic_server_state_t *bss,
     return CHRPC_SC_DISCONNECT;
 }
 
+#define BASIC_SERVER_MAX_CLIENTS 5
 chrpc_server_t *new_basic_server(void) {
     chrpc_endpoint_set_t *eps = new_chrpc_endpoint_set_va(
         new_chrpc_endpoint_va(
@@ -141,7 +142,7 @@ chrpc_server_t *new_basic_server(void) {
     chrpc_server_t *server; 
 
     chrpc_server_attrs_t attrs = {
-        .max_connections = 5, 
+        .max_connections = BASIC_SERVER_MAX_CLIENTS, 
         .max_msg_size = 0x1000,
         .num_workers = 3,
         .worker_usleep_amt = 100
@@ -190,9 +191,10 @@ static chrpc_status_t basic_client_push_msg(chrpc_client_t *client, uint32_t *le
     delete_chrpc_value(arg0);
     delete_chrpc_value(arg1);
 
-    *len = ret_val->value->u32;
-
-    delete_chrpc_value(ret_val);
+    if (status == CHRPC_SUCCESS) {
+        *len = ret_val->value->u32;
+        delete_chrpc_value(ret_val);
+    }
 
     return status;
 }
@@ -208,19 +210,20 @@ static chrpc_status_t basic_client_poll_msgs(chrpc_client_t *client, list_t **l,
 
     delete_chrpc_value(arg0);
 
-    list_t *ret_l = new_list(ARRAY_LIST_IMPL, sizeof(basic_message_t *));
-    for (uint32_t i = 0; i < ret_val->value->array_len; i++) {
-        basic_message_t *cell = new_basic_message(
-            ret_val->value->array_entries[i]->struct_entries[0]->u32,
-            ret_val->value->array_entries[i]->struct_entries[1]->str
-        );
+    if (status == CHRPC_SUCCESS) {
+        list_t *ret_l = new_list(ARRAY_LIST_IMPL, sizeof(basic_message_t *));
+        for (uint32_t i = 0; i < ret_val->value->array_len; i++) {
+            basic_message_t *cell = new_basic_message(
+                ret_val->value->array_entries[i]->struct_entries[0]->u32,
+                ret_val->value->array_entries[i]->struct_entries[1]->str
+            );
 
-        l_push(ret_l, &cell);
+            l_push(ret_l, &cell);
+        }
+
+        *l = ret_l;
+        delete_chrpc_value(ret_val);
     }
-
-    *l = ret_l;
-
-    delete_chrpc_value(ret_val);
 
     return status;
 }
@@ -338,8 +341,6 @@ static void test_basic_server_incorrect_usage(void) {
 
 // Could we maybe try some parrallel usage case?
 
-#define TEST_BASIC_PARALLEL_CLIENTS 5
-
 static void *test_basic_server_parallel_clients_routine(void *arg) {
     chrpc_server_t *server = (chrpc_server_t *)arg;
 
@@ -390,14 +391,90 @@ static void *test_basic_server_parallel_clients_routine(void *arg) {
 static void test_basic_server_parallel_clients(void) {
     chrpc_server_t *server = new_basic_server();
     
-    pthread_t client_workers[TEST_BASIC_PARALLEL_CLIENTS];
-    for (size_t i = 0; i < TEST_BASIC_PARALLEL_CLIENTS; i++) {
+    pthread_t client_workers[BASIC_SERVER_MAX_CLIENTS];
+    for (size_t i = 0; i < BASIC_SERVER_MAX_CLIENTS; i++) {
         safe_pthread_create(&(client_workers[i]), NULL, test_basic_server_parallel_clients_routine, server);
     }
-    for (size_t i = 0; i < TEST_BASIC_PARALLEL_CLIENTS; i++) {
+    for (size_t i = 0; i < BASIC_SERVER_MAX_CLIENTS; i++) {
         safe_pthread_join(client_workers[i], NULL);
     }
 
+    delete_basic_server(server);
+}
+
+static void test_too_many_clients(void) {
+    chrpc_status_t status;
+    chrpc_server_t *server = new_basic_server();
+
+    struct {
+        channel_local2_core_t *core;
+        chrpc_client_t *client;
+    } clients[BASIC_SERVER_MAX_CLIENTS + 1];
+
+    for (size_t i = 0; i < BASIC_SERVER_MAX_CLIENTS; i++) {
+        status = new_chrpc_local_client(server, &BASIC_CHN_CFG, &BASIC_CLIENT_ATTRS, 
+                &(clients[i].core), &(clients[i].client));
+        TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+    }
+
+    status = new_chrpc_local_client(server, &BASIC_CHN_CFG, &BASIC_CLIENT_ATTRS, 
+            &(clients[BASIC_SERVER_MAX_CLIENTS].core), &(clients[BASIC_SERVER_MAX_CLIENTS].client));
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    status = chrpc_client_send_argless_request(
+        clients[0].client, "disconnect", NULL
+    );
+    delete_chrpc_client(clients[0].client);
+    delete_channel_local2_core(clients[0].core);
+
+    status = new_chrpc_local_client(server, &BASIC_CHN_CFG, &BASIC_CLIENT_ATTRS, 
+            &(clients[0].core), &(clients[0].client));
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+
+    for (size_t i = 0; i < BASIC_SERVER_MAX_CLIENTS; i++) {
+        delete_chrpc_client(clients[i].client);
+        delete_channel_local2_core(clients[i].core);
+    }
+    delete_basic_server(server);
+}
+
+static void test_small_channel(void) {
+    chrpc_status_t status;
+    chrpc_server_t *server = new_basic_server();
+    channel_local_config_t small_chn_cfg = {
+        .max_msg_size =  0x100, // ONLY 256 Bytes.
+        .queue_depth = 1,
+        .write_over = false
+    };
+
+    channel_local2_core_t *core;
+    chrpc_client_t *client;
+    status = new_chrpc_local_client(server, &small_chn_cfg, &BASIC_CLIENT_ATTRS, &core, &client);
+    TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+
+    uint32_t len;
+    char long_string[0x100];
+    for (size_t i = 0; i < sizeof(long_string); i++) {
+        long_string[i] = 'a';
+    }
+    long_string[sizeof(long_string) - 1] = '\0';
+
+    // Client Request is too large.
+    status = basic_client_push_msg(client, &len, 0, long_string);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    // Server Response it too large.
+    for (size_t i = 0; i < 50; i++) {
+        status = basic_client_push_msg(client, &len, 0, "Hello");
+        TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
+    }
+
+    list_t *l;
+    status = basic_client_poll_msgs(client, &l, 50);
+    TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
+
+    delete_chrpc_client(client);
+    delete_channel_local2_core(core);
     delete_basic_server(server);
 }
 
@@ -406,4 +483,6 @@ void chrpc_simple_rpc_tests(void) {
     RUN_TEST(test_basic_server_correct_usage);
     RUN_TEST(test_basic_server_incorrect_usage);
     RUN_TEST(test_basic_server_parallel_clients);
+    RUN_TEST(test_too_many_clients);
+    RUN_TEST(test_small_channel);
 }
