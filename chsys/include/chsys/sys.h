@@ -6,6 +6,13 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
+// NOTE: Be aware by defualt the system ignores:
+//
+// SIGINT and SIGPIPE.
+//
+// If a SIGINT is received, a worker thread will handle it and exit.
+// Nothing happens when a SIGPIPE is received.
+
 // An error during setup will result in exit.
 // A message will be printed, but not in a pretty way!
 void sys_init(void);

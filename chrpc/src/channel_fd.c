@@ -6,6 +6,21 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <poll.h>
+#include <string.h>
+#include <fcntl.h>
+
+// A channel will send a formatted message across the given file descriptor.
+//
+// 4-Byte Start Magic Value
+// 4-Byte Unsigned Length
+// ... Data ... (Length Bytes)
+// 4-Byte End Magic Value
+
+#define CHN_FD_START_MAGIC 0x1234C0DE
+#define CHN_FD_END_MAGIC   0xEF01C0DE
+
+#define CHN_FD_MSG_SIZE(len) \
+    ((2 * sizeof(uint32_t)) + (len) + sizeof(uint32_t))
 
 channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t *cfg) {
     if (!cfg) {
@@ -16,18 +31,69 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
         return CHN_INVALID_ARGS;
     }
 
-    channel_fd_t *chn = (channel_fd_t *)safe_malloc(sizeof(channel_fd_t));
+    int flags;
+
+    int write_fd = cfg->fd;
+
+    flags = fcntl(write_fd, F_GETFL, 0);
+    if (flags == -1) {
+        goto error_out;
+    }
+
+    // Set write fd in blocking mode.
+    if (fcntl(write_fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+        goto error_out;
+    }
+
+    int read_fd = dup(cfg->fd);
+    if (read_fd < 0) {
+        goto error_out;
+    }
+
+    flags = fcntl(read_fd, F_GETFL, 0);
+    if (flags == -1) {
+        goto error_out;
+    }
+    
+    // Set read fd in non-blocking mode.
+    if (fcntl(read_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        goto error_out;
+    }
+
+    channel_fd_t *chn = NULL;
+
+    chn = (channel_fd_t *)safe_malloc(sizeof(channel_fd_t));
+
     chn->cfg = *cfg;  
 
+    chn->write_fd = write_fd;
+    chn->read_fd = read_fd;
+
+    chn->write_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
+
     if (pthread_mutex_init(&(chn->mut), NULL)) {
-        safe_free(chn);
-        return CHN_UNKNOWN_ERROR;
+        goto error_out;
     }
 
     chn->q = new_queue(cfg->queue_depth, sizeof(channel_msg_t));
     *chn_fd = chn;
 
     return CHN_SUCCESS;
+
+error_out:
+    if (write_fd >= 0) {
+        close(write_fd);
+    }
+
+    if (read_fd >= 0) {
+        close(read_fd);
+    }
+
+    if (chn) {
+        safe_free(chn);
+    }
+
+    return CHN_UNKNOWN_ERROR;
 }
 
 channel_status_t delete_channel_fd(channel_fd_t *chn_fd) {
@@ -48,34 +114,42 @@ channel_status_t chn_fd_max_msg_size(channel_fd_t *chn_fd, size_t *mms) {
     return CHN_SUCCESS;
 }
 
+
 channel_status_t chn_fd_send(channel_fd_t *chn_fd, const void *msg, size_t len) {
+    if (len == 0 || chn_fd->cfg.max_msg_size < len) {
+        return CHN_INVALID_MSG_SIZE;
+    }
+
     channel_status_t status = CHN_SUCCESS;
 
     pthread_mutex_lock(&(chn_fd->mut));
 
-    struct pollfd pfd;
-
-    pfd.fd = chn_fd->cfg.fd;
-    pfd.events = POLLOUT;
-    int result = poll(&pfd, 1, 0);
-
-    if (result == 0 || (result > 0 && !(pfd.revents & POLLOUT))) {
+    if (chn_fd->write_fd < 0) {
         status = CHN_CANNOT_WRITE;
         goto end;
     }
 
-    if (result < 0) {
-        status = CHN_UNKNOWN_ERROR;
+    size_t write_size = CHN_FD_MSG_SIZE(len);
+
+    *(uint32_t *)(chn_fd->write_buf) = CHN_FD_START_MAGIC;
+    *((uint32_t *)(chn_fd->write_buf) + 1) = len;
+    memcpy(chn_fd->write_buf + (2 * sizeof(uint32_t)), msg, len);
+    *(uint32_t *)(chn_fd->write_buf + (2 * sizeof(uint32_t)) + len) = CHN_FD_END_MAGIC;
+
+    // NOTE: A more rigorous implementation would write again if a partial write occurred.
+    // In this case, any write which was not complete will close the write file descriptor.
+
+    int written = write(chn_fd->write_fd, chn_fd->write_buf, write_size);
+
+    if (written != write_size) {
+        close(chn_fd->write_fd);
+        chn_fd->write_fd = -1;
+        status = CHN_CANNOT_WRITE;
+
         goto end;
     }
 
-    // result > 0 AND POLLOUT is true!
-    // We can write!
-
-    // How should we do this??
-    // Send one big chunk??
-    // Receive one big chunk??
-    // Honestly not as simple as I would like here...
+    // Don't think I need to do anything more if write was successful.
 
 end:
     pthread_mutex_unlock(&(chn_fd->mut));

@@ -13,6 +13,9 @@ typedef struct _channel_fd_config_t {
 
     // NOTE: The given file descriptor will be OWNED by the created channel.
     // That is, it will be CLOSED when the channel is destroyed.
+    //
+    // NOTE: Very Important: Unlike some other code of I have in this project,
+    // if the constructor fails, this file descriptor will be closed.
     int fd;
 
     bool write_over;
@@ -21,6 +24,14 @@ typedef struct _channel_fd_config_t {
 
 typedef struct _channel_fd_t {
     channel_fd_config_t cfg;
+
+    // Read will be non-blocking.
+    int read_fd;
+    //uint8_t *read_buf;
+
+    // Write will be blocking.
+    int write_fd;
+    uint8_t *write_buf;
 
     pthread_mutex_t mut;
     queue_t *q;
