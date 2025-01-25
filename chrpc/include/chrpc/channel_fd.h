@@ -20,6 +20,9 @@ typedef struct _channel_fd_config_t {
 
     bool write_over;
     size_t max_msg_size;
+
+    // How much we should read in every go, this CAN be larger than max_msg_size.
+    size_t read_chunk_size;
 } channel_fd_config_t;
 
 typedef struct _channel_fd_t {
@@ -27,6 +30,12 @@ typedef struct _channel_fd_t {
 
     // Read will be non-blocking.
     int read_fd;
+    uint8_t *read_chunk;
+
+    // TODO:
+    // size_t curr_msg_len;
+    // uint8_t *curr_msg;
+
     //uint8_t *read_buf;
 
     // Write will be blocking.

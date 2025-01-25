@@ -3,7 +3,9 @@
 #include "chrpc/channel.h"
 #include "chrpc/serial_type.h"
 #include "chsys/mem.h"
+#include "chutil/queue.h"
 #include <pthread.h>
+#include <errno.h>
 #include <unistd.h>
 #include <poll.h>
 #include <string.h>
@@ -27,7 +29,8 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
         return CHN_INVALID_ARGS;
     }
 
-    if (cfg->max_msg_size == 0 || cfg->queue_depth == 0 || cfg->fd < 0) {
+    if (cfg->max_msg_size == 0 || cfg->queue_depth == 0 || 
+            cfg->fd < 0 || cfg->read_chunk_size == 0) {
         return CHN_INVALID_ARGS;
     }
 
@@ -69,6 +72,7 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
     chn->write_fd = write_fd;
     chn->read_fd = read_fd;
 
+    chn->read_chunk = (uint8_t *)safe_malloc(cfg->read_chunk_size);
     chn->write_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
 
     if (pthread_mutex_init(&(chn->mut), NULL)) {
@@ -138,6 +142,8 @@ channel_status_t chn_fd_send(channel_fd_t *chn_fd, const void *msg, size_t len) 
 
     // NOTE: A more rigorous implementation would write again if a partial write occurred.
     // In this case, any write which was not complete will close the write file descriptor.
+    //
+    // Remeber that the write file descriptor should be configured as blocking.
 
     int written = write(chn_fd->write_fd, chn_fd->write_buf, write_size);
 
@@ -157,7 +163,49 @@ end:
 }
 
 channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
-    return CHN_UNKNOWN_ERROR;
+    channel_status_t status = CHN_SUCCESS;
+
+    pthread_mutex_lock(&(chn_fd->mut));
+
+    // NOTE: we will say that we are allowed to call refresh on a channel who's endpoint has
+    // already closed. Just return Success and call it a day.
+    //
+    // In fact, any error here we will ultimately let slide.
+
+    if (chn_fd->read_fd < 0) {
+        goto end;
+    }
+
+    int readden;
+    while ((readden = read(chn_fd->read_fd, chn_fd->read_chunk, chn_fd->cfg.read_chunk_size)) > 0) {
+        // We read into our chunk buffer... now what...
+    }
+
+    // EOF is still a success!
+    if (readden == 0) {
+        close(chn_fd->read_fd);
+        chn_fd->read_fd = -1;    
+
+        goto end;
+    }
+
+    if (readden < 0) {
+        // NOTE: I recently learned all threads have their own instance of errno.
+        // This is huge!
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            close(chn_fd->read_fd);
+            chn_fd->read_fd = -1;    
+        }
+
+        // We don't do anything with a wouldblock/again error.
+        goto end;
+    }
+
+    // Successful read logic should all be handled in above while loop.
+
+end:
+    pthread_mutex_unlock(&(chn_fd->mut));
+    return status;
 }
 
 channel_status_t chn_fd_incoming_len(channel_fd_t *chn_fd, size_t *len) {
