@@ -40,7 +40,7 @@ int q_push(queue_t *q, const void *src) {
     return 0;
 }
 
-int q_pop(queue_t *q, void *dest) {
+int q_poll(queue_t *q, void *dest) {
     if (q->len == 0) {
         return 1;
     }

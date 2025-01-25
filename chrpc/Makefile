@@ -4,6 +4,7 @@ DEPS		:= chsys \
 			   chutil
 
 _SRCS		:= channel.c \
+			   channel_fd.c \
 			   channel_helpers.c \
 			   channel_local.c \
 			   channel_local2.c \

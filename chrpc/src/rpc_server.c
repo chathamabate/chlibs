@@ -433,7 +433,7 @@ static void *chrpc_server_worker_routine(void *arg) {
         int e;
 
         safe_pthread_mutex_lock(&(server->q_mut));
-        e = q_pop(server->channels_q, &chn);
+        e = q_poll(server->channels_q, &chn);
         safe_pthread_mutex_unlock(&(server->q_mut));
 
         if (e) {
@@ -552,7 +552,7 @@ void delete_chrpc_server(chrpc_server_t *server) {
     // Cleanup channel queue.
 
     channel_t *chan; 
-    while (q_pop(server->channels_q, &chan) == 0) {
+    while (q_poll(server->channels_q, &chan) == 0) {
         delete_channel(chan);
     }
 

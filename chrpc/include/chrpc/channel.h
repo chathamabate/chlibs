@@ -13,6 +13,10 @@ typedef enum _channel_status_t {
     CHN_MEM_ERROR,
     CHN_CHANNEL_FULL,
     CHN_UNKNOWN_ERROR,
+
+    CHN_CANNOT_WRITE,
+    CHN_CANNOT_READ,
+
     CHN_CLOSED
 } channel_status_t;
 

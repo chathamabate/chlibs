@@ -11,12 +11,12 @@ static void test_queue_simple1(void) {
     int s;
     int d;
 
-    TEST_ASSERT_EQUAL_INT(1, q_pop(q, &d));
+    TEST_ASSERT_EQUAL_INT(1, q_poll(q, &d));
 
     s = 2;
     TEST_ASSERT_EQUAL_INT(0, q_push(q, &s));
 
-    TEST_ASSERT_EQUAL_INT(0, q_pop(q, &d));
+    TEST_ASSERT_EQUAL_INT(0, q_poll(q, &d));
     TEST_ASSERT_EQUAL_INT(2, d);
 
     delete_queue(q);
@@ -51,7 +51,7 @@ static void test_queue_simple2(void) {
     for (size_t i = 0; i < cap; i++) {
         coord_t d;
 
-        TEST_ASSERT_EQUAL_INT(0, q_pop(q, &d));
+        TEST_ASSERT_EQUAL_INT(0, q_poll(q, &d));
         TEST_ASSERT_EQUAL_INT64(i, d.x);
         TEST_ASSERT_EQUAL_INT64(i * 2, d.y);
 
@@ -77,7 +77,7 @@ static void test_queue_simple3(void) {
 
         for (uint8_t i = 0; i < group_size; i++) {
             uint8_t d;
-            TEST_ASSERT_EQUAL_INT(0, q_pop(q, &d));
+            TEST_ASSERT_EQUAL_INT(0, q_poll(q, &d));
             TEST_ASSERT_EQUAL_UINT8(i + 3, d);
         }
 
