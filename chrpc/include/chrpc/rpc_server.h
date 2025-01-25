@@ -1,6 +1,6 @@
 
-#ifndef CHRPC_RPC_H
-#define CHRPC_RPC_H
+#ifndef CHRPC_RPC_SERVER_H
+#define CHRPC_RPC_SERVER_H
 
 #include "chrpc/channel.h"
 #include "chrpc/channel_local2.h"
@@ -16,9 +16,6 @@
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
 #define CHRPC_SERVER_BUF_MIN_SIZE 200
-
-#define CHRPC_CLIENT_DEFAULT_CADENCE 50000    // 50 ms cadence.
-#define CHRPC_CLIENT_DEFAULT_TIMEOUT 5000000  // 5s timeout.
 
 typedef enum _chrpc_server_command_t {
 
@@ -210,11 +207,12 @@ typedef struct _chrpc_server_t {
 // As the chrpc server will spawn threads, it is possible this call fails.
 // For example, if this process has already spawned the maximum number of threads.
 //
+// NOTE: given attributes will be copied into server structure.
 // NOTE: max_cons must be >= workers, otherwise an error will be thrown.
 //
 // NOTE: The created server assumes ownership of the given endpoint set.
 // When the server is deleted, so is the endpoint set.
-chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, chrpc_server_attrs_t attrs, chrpc_endpoint_set_t *eps);
+chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, const chrpc_server_attrs_t *attrs, chrpc_endpoint_set_t *eps);
 void delete_chrpc_server(chrpc_server_t *server);
 
 static inline void *chrpc_server_state(chrpc_server_t *server) {
@@ -225,80 +223,5 @@ static inline void *chrpc_server_state(chrpc_server_t *server) {
 // Returns CHRPC_SERVER_FULL, if the server cannot accept anymroe channels at this time.
 // In this case, it is the user's responsibility to cleanup the channel.
 chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn);
-
-typedef struct _chrpc_client_attrs_t {
-    // Frequency by which to check.
-    useconds_t cadence;
-
-    // At least how long to wait until giving up.
-    useconds_t timeout;
-} chrpc_client_attrs_t;
-
-typedef struct _chrpc_client_t {
-    // The client will wait at least timeout microseconds for a response from the server.
-    // If no response is received, the given channel will be destroyed and set to NULL.
-    //
-    // Similarly, If there is some fatal error sending a message over the channel or
-    // receiving a message over the channel, the channel will also be destoryed and set
-    // to NULL. From that point on, a CHRPC_CLIENT_ERROR will be returned everytime the user
-    // tries to send a request. 
-    //
-    // If there is a message in the channel, it should always be receivable into buf, since
-    // buf's size will be the max message size of the channel.
-    //
-    // If the receivied response is malformed, the channel will persist.
-    chrpc_client_attrs_t attrs;
-    channel_t *chn;
-
-    // Buf will be used for preparing serialized requests.
-    size_t buf_len;
-    uint8_t *buf;
-
-    // Would be nice not to need to have these allocated for every client/server
-    // instance, although, tbh, it's not very significant.
-    const chrpc_type_t *req_type;
-    const chrpc_type_t *resp_type;
-} chrpc_client_t;
-
-// The given channel will be OWNED by the created client.
-chrpc_status_t new_chrpc_client(chrpc_client_t **client, channel_t *chn, chrpc_client_attrs_t attrs);
-
-static inline chrpc_status_t new_chrpc_default_client(chrpc_client_t **client, channel_t *chn) {
-    return new_chrpc_client(client, chn, 
-        (chrpc_client_attrs_t){
-            .cadence = CHRPC_CLIENT_DEFAULT_CADENCE,
-            .timeout = CHRPC_CLIENT_DEFAULT_TIMEOUT
-        }
-    );
-}
-
-void delete_chrpc_client(chrpc_client_t *client);
-
-// If the function being called has no return value, ret can be NULL.
-// Similarly, if the function being called takes no arguments, args can be NULL.
-//
-// NOTE: The given args are NOT CLEANED UP by this function. It is the user's responsibility to free
-// each arg after performing an rpc call.
-chrpc_status_t chrpc_client_send_request(chrpc_client_t *client, const char *name, chrpc_value_t **ret, chrpc_value_t **args, uint8_t num_args);
-
-// Expects a NULL terminated sequnce of pointer to chrpc_value_t's
-chrpc_status_t _chrpc_client_send_request_va(chrpc_client_t *client, const char *name, chrpc_value_t **ret, ...);
-
-#define chrpc_client_send_request_va(client, name, ret, ...) \
-    _chrpc_client_send_request_va(client, name, ret, __VA_ARGS__, NULL)
-
-static inline chrpc_status_t chrpc_client_send_argless_request(chrpc_client_t *client, const char *name, chrpc_value_t **ret) {
-    return chrpc_client_send_request(client, name, ret, NULL, 0);
-}
-
-// This is a helper function that makes life easy.
-// It creates a local bi direction channel, adds one end to the server, and creates a client with the other end.
-//
-// NOTE: Just be careful... i.e., don't delete the core while the server still holds one end of the connection.
-// Remember that the local2 channel is kinda awkward to work with.
-chrpc_status_t new_chrpc_local_client(chrpc_server_t *server, 
-        const channel_local_config_t *cfg,
-        const chrpc_client_attrs_t *attrs,
-        channel_local2_core_t **core, chrpc_client_t **client);
 
 #endif

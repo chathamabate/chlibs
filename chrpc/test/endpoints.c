@@ -6,7 +6,7 @@
 #include "chrpc/serial_value.h"
 #include "unity/unity.h"
 
-#include "chrpc/rpc.h"
+#include "chrpc/rpc_server.h"
 #include "./endpoints.h"
 #include <pthread.h>
 

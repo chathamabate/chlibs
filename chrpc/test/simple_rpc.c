@@ -10,7 +10,8 @@
 #include <pthread.h>
 
 #include "chrpc/channel.h"
-#include "chrpc/rpc.h"
+#include "chrpc/rpc_server.h"
+#include "chrpc/rpc_client.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
 
@@ -139,15 +140,15 @@ chrpc_server_t *new_basic_server(void) {
 
     chrpc_server_t *server; 
 
+    chrpc_server_attrs_t attrs = {
+        .max_connections = 5, 
+        .max_msg_size = 0x1000,
+        .num_workers = 3,
+        .worker_usleep_amt = 100
+    };
+
     chrpc_status_t status = new_chrpc_server(
-        &server, bss, 
-        (chrpc_server_attrs_t){
-            .max_connections = 4,
-            .max_msg_size = 0x1000,
-            .num_workers = 3,
-            .worker_usleep_amt = 100
-        },
-        eps
+        &server, bss, &attrs, eps
     );
 
     TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);

@@ -7,7 +7,8 @@ _SRCS		:= channel.c \
 			   channel_helpers.c \
 			   channel_local.c \
 			   channel_local2.c \
-			   rpc.c \
+			   rpc_server.c \
+			   rpc_client.c \
 			   serial_helpers.c \
 			   serial_type.c \
 			   serial_value.c
