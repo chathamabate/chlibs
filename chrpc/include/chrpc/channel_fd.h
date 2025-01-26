@@ -32,6 +32,9 @@ typedef struct _channel_fd_t {
     int read_fd;
     uint8_t *read_chunk;
 
+    size_t msg_buf_fill;
+    uint8_t *msg_buf;
+
     // TODO:
     // size_t curr_msg_len;
     // uint8_t *curr_msg;

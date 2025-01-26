@@ -13,16 +13,19 @@
 
 // A channel will send a formatted message across the given file descriptor.
 //
-// 4-Byte Start Magic Value
+// 1-Byte Start Magic Value
 // 4-Byte Unsigned Length
 // ... Data ... (Length Bytes)
-// 4-Byte End Magic Value
+// 1-Byte End Magic Value
+//
+// NOTE: I originally had this as 4 byte magic values, but this was extremely
+// annoying to implement IMO.
 
-#define CHN_FD_START_MAGIC 0x1234C0DE
-#define CHN_FD_END_MAGIC   0xEF01C0DE
+#define CHN_FD_START_MAGIC 0x1E
+#define CHN_FD_END_MAGIC   0x2A
 
 #define CHN_FD_MSG_SIZE(len) \
-    ((2 * sizeof(uint32_t)) + (len) + sizeof(uint32_t))
+    (sizeof(uint8_t) + sizeof(uint32_t) + (len) + sizeof(uint8_t))
 
 
 static int setup_fds(int write_fd, int read_fd) {
@@ -71,6 +74,8 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
     chn->write_fd = cfg->fd;
     chn->read_fd = -1;
     chn->read_chunk = (uint8_t *)safe_malloc(cfg->read_chunk_size);
+    chn->msg_buf_fill = 0;
+    chn->msg_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
     chn->write_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
     chn->q = new_queue(cfg->queue_depth, sizeof(channel_msg_t));
 
@@ -109,6 +114,7 @@ channel_status_t delete_channel_fd(channel_fd_t *chn_fd) {
 
     delete_queue(chn_fd->q);
     safe_free(chn_fd->read_chunk);
+    safe_free(chn_fd->msg_buf);
     safe_free(chn_fd->write_buf);
 
     pthread_mutex_destroy(&(chn_fd->mut));
@@ -165,6 +171,121 @@ end:
     return status;
 }
 
+// NOTE: Assumes we have the channel lock, returns new value of read_chunk_pos.
+static size_t _chn_fd_process_single_msg(channel_fd_t *chn_fd, size_t read_chunk_pos, size_t readden) {
+    if (read_chunk_pos >= readden) {
+        return read_chunk_pos;
+    }
+
+    // If there is nothing, we must search for the magic start value.
+    if (chn_fd->msg_buf_fill == 0) {
+        while (read_chunk_pos < readden) {
+            // We found our magic value!
+            if (chn_fd->read_chunk[read_chunk_pos] == CHN_FD_START_MAGIC) {
+                chn_fd->msg_buf[0] = CHN_FD_START_MAGIC;
+
+                chn_fd->msg_buf_fill++;
+                read_chunk_pos++;
+
+                break;
+            }
+
+            read_chunk_pos++;
+        }
+    }
+
+    // NOTE: that if we never find a starting magic value, this is ok.
+    // It'll just return here before doing any of the other logic.
+    if (read_chunk_pos >= readden) {
+        return read_chunk_pos;
+    }
+
+    if (chn_fd->msg_buf_fill < (sizeof(uint8_t) + sizeof(uint32_t))) {
+        // If we make it here, we know that we have our starting magic value in the
+        // message buffer, but we don't have the complete length... AND there are more bytes to read.
+        
+        size_t length_bytes_needed = (sizeof(uint8_t) + sizeof(uint32_t)) - chn_fd->msg_buf_fill;
+        size_t bytes_to_read = readden - read_chunk_pos;
+        if (bytes_to_read > length_bytes_needed) {
+            bytes_to_read = length_bytes_needed; 
+        }
+
+        memcpy(chn_fd->msg_buf + chn_fd->msg_buf_fill, chn_fd->read_chunk + read_chunk_pos, bytes_to_read);
+        
+        chn_fd->msg_buf_fill += bytes_to_read;
+        read_chunk_pos += bytes_to_read;
+    }
+
+    if (read_chunk_pos >= readden) {
+        return read_chunk_pos;
+    }
+
+    // If we make it here, the buffer holds a starting magic value, a length value (And potentially more)
+    size_t msg_length = *(uint32_t *)(chn_fd->msg_buf + sizeof(uint8_t));
+
+    if (chn_fd->msg_buf_fill < (sizeof(uint8_t) + sizeof(uint32_t) + msg_length)) {
+        size_t msg_bytes_needed =  (sizeof(uint8_t) + sizeof(uint32_t) + msg_length) - chn_fd->msg_buf_fill;
+        size_t bytes_to_read = readden - read_chunk_pos;
+        if (bytes_to_read > msg_bytes_needed) {
+            bytes_to_read = msg_bytes_needed;
+        }
+
+        memcpy(chn_fd->msg_buf + chn_fd->msg_buf_fill, chn_fd->read_chunk + read_chunk_pos, bytes_to_read);
+
+        chn_fd->msg_buf_fill += bytes_to_read;
+        read_chunk_pos += bytes_to_read;
+    }
+
+    if (read_chunk_pos >= readden) {
+        return read_chunk_pos;
+    }
+
+    // If we make it here, the buffer holds everything except maybe the ending magic value.
+    if (chn_fd->msg_buf_fill < (sizeof(uint8_t) + sizeof(uint32_t) + msg_length + sizeof(uint8_t))) {
+        // Uh-Oh, we failed to read the end message value :,(
+        if (chn_fd->read_chunk[read_chunk_pos] != CHN_FD_END_MAGIC) {
+            chn_fd->msg_buf_fill = 0;
+            read_chunk_pos++;
+
+            return read_chunk_pos;
+        }
+
+        // We have a complete message!
+        chn_fd->msg_buf[chn_fd->msg_buf_fill++] = CHN_FD_END_MAGIC;
+        read_chunk_pos++;
+    }
+
+    // Clearing the fill of our message buf here will make things easier imo.
+    chn_fd->msg_buf_fill = 0;
+
+    // Throw out empty messages.
+    if (msg_length == 0) {
+        return read_chunk_pos;
+    }
+
+    channel_msg_t msg;
+
+    if (q_len(chn_fd->q) == q_cap(chn_fd->q)) {
+        // No write over?, call it a day.
+        if (!(chn_fd->cfg.write_over)) {
+            return read_chunk_pos;
+        }
+        
+        // Throw out oldest message in write over case.
+        q_poll(chn_fd->q, &msg); 
+        safe_free(msg.msg_buf); 
+    }
+
+    msg.msg_buf = safe_malloc(msg_length);
+    memcpy(msg.msg_buf, chn_fd->msg_buf + sizeof(uint8_t) + sizeof(uint32_t), msg_length);
+
+    msg.msg_size = msg_length;
+    
+    q_push(chn_fd->q, &msg);
+
+    return read_chunk_pos;
+}
+
 channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
     channel_status_t status = CHN_SUCCESS;
 
@@ -181,7 +302,10 @@ channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
 
     int readden;
     while ((readden = read(chn_fd->read_fd, chn_fd->read_chunk, chn_fd->cfg.read_chunk_size)) > 0) {
-        // TODO: FILL THIS IN!
+        size_t read_chunk_pos = 0;
+        while (read_chunk_pos < readden) {
+            read_chunk_pos = _chn_fd_process_single_msg(chn_fd, read_chunk_pos, readden);
+        }
     }
 
     // EOF is still a success!
@@ -205,7 +329,7 @@ channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
         goto end;
     }
 
-    // Successful read logic should all be handled in above while loop.
+    // I don't think I need to do anything else here.
 
 end:
     pthread_mutex_unlock(&(chn_fd->mut));
@@ -218,7 +342,7 @@ channel_status_t chn_fd_incoming_len(channel_fd_t *chn_fd, size_t *len) {
     pthread_mutex_lock(&(chn_fd->mut));
 
     if (q_len(chn_fd->q) == 0) {
-        return_status = CHN_NO_INCOMING_MSG;
+        return_status = chn_fd->read_fd < 0 ? CHN_CANNOT_READ : CHN_NO_INCOMING_MSG;
     } else {
         const channel_msg_t *msg = (const channel_msg_t *)q_peek(chn_fd->q);
         *len = msg->msg_size;
@@ -230,6 +354,31 @@ channel_status_t chn_fd_incoming_len(channel_fd_t *chn_fd, size_t *len) {
 }
 
 channel_status_t chn_fd_receive(channel_fd_t *chn_fd, void *buf, size_t len, size_t *readden) {
-    return CHN_UNKNOWN_ERROR;
+    channel_status_t return_status = CHN_SUCCESS;
+
+    pthread_mutex_lock(&(chn_fd->mut));
+
+    if (q_len(chn_fd->q) == 0) {
+        return_status = chn_fd->read_fd < 0 ? CHN_CANNOT_READ : CHN_NO_INCOMING_MSG;
+        goto end;
+    } 
+
+    const channel_msg_t *peek_msg = (const channel_msg_t *)q_peek(chn_fd->q);
+    if (peek_msg->msg_size > len) {
+        return_status = CHN_BUFFER_TOO_SMALL;
+        goto end;
+    }
+
+    // We can successfully pop a message of the queue!
+    
+    channel_msg_t msg;
+    q_poll(chn_fd->q, &msg);
+    memcpy(buf, msg.msg_buf, msg.msg_size);
+    *readden = msg.msg_size;    
+    safe_free(msg.msg_buf);
+
+end:
+    pthread_mutex_unlock(&(chn_fd->mut));
+    return return_status;
 }
 
