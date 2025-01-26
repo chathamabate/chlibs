@@ -11,12 +11,13 @@
 typedef struct _channel_fd_config_t {
     size_t queue_depth;
 
-    // NOTE: The given file descriptor will be OWNED by the created channel.
-    // That is, it will be CLOSED when the channel is destroyed.
+    // NOTE: the created channel will OWN both file descriptors.
+    // Even if the constructor fails both descriptors will be closed.
     //
-    // NOTE: Very Important: Unlike some other code of I have in this project,
-    // if the constructor fails, this file descriptor will be closed.
-    int fd;
+    // If you'd like to read/write using the same descriptor, set read_fd to -1.
+    // Write fd will be dup'd.
+    int write_fd;
+    int read_fd;
 
     bool write_over;
     size_t max_msg_size;
@@ -35,12 +36,6 @@ typedef struct _channel_fd_t {
     size_t msg_buf_fill;
     uint8_t *msg_buf;
 
-    // TODO:
-    // size_t curr_msg_len;
-    // uint8_t *curr_msg;
-
-    //uint8_t *read_buf;
-
     // Write will be blocking.
     int write_fd;
     uint8_t *write_buf;
@@ -48,6 +43,8 @@ typedef struct _channel_fd_t {
     pthread_mutex_t mut;
     queue_t *q;
 } channel_fd_t;
+
+extern const channel_impl_t * const CHANNEL_FD_IMPL;
 
 channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t *cfg);
 channel_status_t delete_channel_fd(channel_fd_t *chn_fd);

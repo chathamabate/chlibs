@@ -16,6 +16,7 @@ _SRCS		:= channel.c \
 
 _TEST_SRCS   := main.c \
 				channel.c \
+				channel_fd.c \
 				channel_local.c \
 				channel_local2.c \
 				endpoints.c \

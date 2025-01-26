@@ -12,6 +12,7 @@
 #include "unity/unity_internals.h"
 
 #include "channel_local.h"
+#include "channel_fd.h"
 #include "chutil/misc.h"
 #include "chrpc/serial_helpers.h"
 
@@ -29,6 +30,7 @@ int main(void) {
     UNITY_BEGIN();
     channel_local_tests();
     channel_local2_tests();
+    channel_fd_tests();
     chrpc_serial_type_tests();
     chrpc_serial_value_tests();
     chrpc_rpc_endpoint_set_tests();

@@ -11,6 +11,18 @@
 #include <string.h>
 #include <fcntl.h>
 
+const channel_impl_t _CHANNEL_FD_IMPL = {
+    .constructor = (channel_constructor_ft)new_channel_fd,
+    .destructor = (channel_destructor_ft)delete_channel_fd,
+    .incoming_len = (channel_incoming_len_ft)chn_fd_incoming_len,
+    .receive = (channel_receive_ft)chn_fd_receive,
+    .max_msg_size = (channel_max_msg_size_ft)chn_fd_max_msg_size,
+    .refresh = (channel_refresh_ft)chn_fd_refresh,
+    .send = (channel_send_ft)chn_fd_send
+};
+
+const channel_impl_t * const CHANNEL_FD_IMPL = &_CHANNEL_FD_IMPL;
+
 // A channel will send a formatted message across the given file descriptor.
 //
 // 1-Byte Start Magic Value
@@ -60,7 +72,7 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
     }
 
     if (cfg->max_msg_size == 0 || cfg->queue_depth == 0 || 
-            cfg->fd < 0 || cfg->read_chunk_size == 0) {
+            cfg->write_fd < 0 || cfg->read_chunk_size == 0) {
         return CHN_INVALID_ARGS;
     }
 
@@ -71,22 +83,22 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
     }
     
     chn->cfg = *cfg;  
-    chn->write_fd = cfg->fd;
-    chn->read_fd = -1;
+    chn->write_fd = cfg->write_fd;
+    chn->read_fd = cfg->read_fd;
     chn->read_chunk = (uint8_t *)safe_malloc(cfg->read_chunk_size);
     chn->msg_buf_fill = 0;
     chn->msg_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
     chn->write_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
     chn->q = new_queue(cfg->queue_depth, sizeof(channel_msg_t));
 
-    int flags;
-
-    int read_fd = dup(cfg->fd);
-    if (read_fd < 0) {
-        delete_channel_fd(chn);
-        return CHN_UNKNOWN_ERROR;
+    if (chn->read_fd < 0) {
+        int read_fd = dup(cfg->write_fd);
+        if (read_fd < 0) {
+            delete_channel_fd(chn);
+            return CHN_UNKNOWN_ERROR;
+        }
+        chn->read_fd = read_fd;
     }
-    chn->read_fd = read_fd;
 
     if (setup_fds(chn->write_fd, chn->read_fd) < 0) {
         delete_channel_fd(chn);
@@ -144,10 +156,10 @@ channel_status_t chn_fd_send(channel_fd_t *chn_fd, const void *msg, size_t len) 
 
     size_t write_size = CHN_FD_MSG_SIZE(len);
 
-    *(uint32_t *)(chn_fd->write_buf) = CHN_FD_START_MAGIC;
-    *((uint32_t *)(chn_fd->write_buf) + 1) = len;
-    memcpy(chn_fd->write_buf + (2 * sizeof(uint32_t)), msg, len);
-    *(uint32_t *)(chn_fd->write_buf + (2 * sizeof(uint32_t)) + len) = CHN_FD_END_MAGIC;
+    chn_fd->write_buf[0] = CHN_FD_START_MAGIC;
+    *(uint32_t *)(chn_fd->write_buf + 1) = len;
+    memcpy(chn_fd->write_buf + (sizeof(uint8_t) + sizeof(uint32_t)), msg, len);
+    *(chn_fd->write_buf + sizeof(uint8_t) + sizeof(uint32_t) + len) = CHN_FD_END_MAGIC;
 
     // NOTE: A more rigorous implementation would write again if a partial write occurred.
     // In this case, any write which was not complete will close the write file descriptor.
@@ -156,7 +168,7 @@ channel_status_t chn_fd_send(channel_fd_t *chn_fd, const void *msg, size_t len) 
 
     int written = write(chn_fd->write_fd, chn_fd->write_buf, write_size);
 
-    if (written != write_size) {
+    if (written < 0 || (size_t)written != write_size) {
         close(chn_fd->write_fd);
         chn_fd->write_fd = -1;
         status = CHN_CANNOT_WRITE;
@@ -222,6 +234,12 @@ static size_t _chn_fd_process_single_msg(channel_fd_t *chn_fd, size_t read_chunk
 
     // If we make it here, the buffer holds a starting magic value, a length value (And potentially more)
     size_t msg_length = *(uint32_t *)(chn_fd->msg_buf + sizeof(uint8_t));
+
+    // Throw out any messages which are too large.
+    if (msg_length > chn_fd->cfg.max_msg_size) {
+        chn_fd->msg_buf_fill = 0;
+        return read_chunk_pos;
+    }
 
     if (chn_fd->msg_buf_fill < (sizeof(uint8_t) + sizeof(uint32_t) + msg_length)) {
         size_t msg_bytes_needed =  (sizeof(uint8_t) + sizeof(uint32_t) + msg_length) - chn_fd->msg_buf_fill;
@@ -303,7 +321,7 @@ channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
     int readden;
     while ((readden = read(chn_fd->read_fd, chn_fd->read_chunk, chn_fd->cfg.read_chunk_size)) > 0) {
         size_t read_chunk_pos = 0;
-        while (read_chunk_pos < readden) {
+        while (read_chunk_pos < (size_t)readden) {
             read_chunk_pos = _chn_fd_process_single_msg(chn_fd, read_chunk_pos, readden);
         }
     }
