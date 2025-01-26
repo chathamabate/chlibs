@@ -24,6 +24,33 @@
 #define CHN_FD_MSG_SIZE(len) \
     ((2 * sizeof(uint32_t)) + (len) + sizeof(uint32_t))
 
+
+static int setup_fds(int write_fd, int read_fd) {
+    int flags;
+
+    flags = fcntl(write_fd, F_GETFL, 0);
+    if (flags == -1) {
+        return -1;
+    }
+
+    // Set write fd in blocking mode.
+    if (fcntl(write_fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+        return -1;
+    }
+
+    flags = fcntl(read_fd, F_GETFL, 0);
+    if (flags == -1) {
+        return -1;
+    }
+    
+    // Set read fd in non-blocking mode.
+    if (fcntl(read_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+        return -1;
+    }
+
+    return 0;
+}
+
 channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t *cfg) {
     if (!cfg) {
         return CHN_INVALID_ARGS;
@@ -34,81 +61,57 @@ channel_status_t new_channel_fd(channel_fd_t **chn_fd, const channel_fd_config_t
         return CHN_INVALID_ARGS;
     }
 
+    channel_fd_t *chn = (channel_fd_t *)safe_malloc(sizeof(channel_fd_t));
+    if (pthread_mutex_init(&(chn->mut), NULL)) {
+        safe_free(chn);
+        return CHN_UNKNOWN_ERROR;
+    }
+    
+    chn->cfg = *cfg;  
+    chn->write_fd = cfg->fd;
+    chn->read_fd = -1;
+    chn->read_chunk = (uint8_t *)safe_malloc(cfg->read_chunk_size);
+    chn->write_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
+    chn->q = new_queue(cfg->queue_depth, sizeof(channel_msg_t));
+
     int flags;
-
-    int write_fd = cfg->fd;
-
-    flags = fcntl(write_fd, F_GETFL, 0);
-    if (flags == -1) {
-        goto error_out;
-    }
-
-    // Set write fd in blocking mode.
-    if (fcntl(write_fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
-        goto error_out;
-    }
 
     int read_fd = dup(cfg->fd);
     if (read_fd < 0) {
-        goto error_out;
+        delete_channel_fd(chn);
+        return CHN_UNKNOWN_ERROR;
     }
-
-    flags = fcntl(read_fd, F_GETFL, 0);
-    if (flags == -1) {
-        goto error_out;
-    }
-    
-    // Set read fd in non-blocking mode.
-    if (fcntl(read_fd, F_SETFL, flags | O_NONBLOCK) == -1) {
-        goto error_out;
-    }
-
-    channel_fd_t *chn = NULL;
-
-    chn = (channel_fd_t *)safe_malloc(sizeof(channel_fd_t));
-
-    chn->cfg = *cfg;  
-
-    chn->write_fd = write_fd;
     chn->read_fd = read_fd;
 
-    chn->read_chunk = (uint8_t *)safe_malloc(cfg->read_chunk_size);
-    chn->write_buf = (uint8_t *)safe_malloc(CHN_FD_MSG_SIZE(cfg->max_msg_size));
-
-    if (pthread_mutex_init(&(chn->mut), NULL)) {
-        goto error_out;
+    if (setup_fds(chn->write_fd, chn->read_fd) < 0) {
+        delete_channel_fd(chn);
+        return CHN_UNKNOWN_ERROR;
     }
 
-    chn->q = new_queue(cfg->queue_depth, sizeof(channel_msg_t));
     *chn_fd = chn;
 
     return CHN_SUCCESS;
-
-error_out:
-    if (write_fd >= 0) {
-        close(write_fd);
-    }
-
-    if (read_fd >= 0) {
-        close(read_fd);
-    }
-
-    if (chn) {
-        safe_free(chn);
-    }
-
-    return CHN_UNKNOWN_ERROR;
 }
 
 channel_status_t delete_channel_fd(channel_fd_t *chn_fd) {
+    if (chn_fd->read_fd >= 0) {
+        close(chn_fd->read_fd);
+    }
+
+    if (chn_fd->write_fd >= 0) {
+        close(chn_fd->write_fd);
+    }
+
     channel_msg_t msg;
     while (q_poll(chn_fd->q, &msg) == 0) {
         safe_free(msg.msg_buf);
     }
 
-    safe_free(chn_fd->q);
+    delete_queue(chn_fd->q);
+    safe_free(chn_fd->read_chunk);
+    safe_free(chn_fd->write_buf);
+
     pthread_mutex_destroy(&(chn_fd->mut));
-    close(chn_fd->cfg.fd);
 
     return CHN_SUCCESS;
 }
@@ -178,7 +181,7 @@ channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
 
     int readden;
     while ((readden = read(chn_fd->read_fd, chn_fd->read_chunk, chn_fd->cfg.read_chunk_size)) > 0) {
-        // We read into our chunk buffer... now what...
+        // TODO: FILL THIS IN!
     }
 
     // EOF is still a success!
@@ -193,6 +196,7 @@ channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
         // NOTE: I recently learned all threads have their own instance of errno.
         // This is huge!
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            // Error, just close up our boy here..
             close(chn_fd->read_fd);
             chn_fd->read_fd = -1;    
         }
