@@ -130,6 +130,7 @@ channel_status_t delete_channel_fd(channel_fd_t *chn_fd) {
     safe_free(chn_fd->write_buf);
 
     pthread_mutex_destroy(&(chn_fd->mut));
+    safe_free(chn_fd);
 
     return CHN_SUCCESS;
 }

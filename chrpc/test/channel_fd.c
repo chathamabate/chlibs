@@ -54,7 +54,28 @@ static void test_channel_fd_echo(void) {
 
     test_chn_echo(a2b, 5);
 
-    delete_channel_echo_thread(et);
+    TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
+            delete_channel_echo_thread(et));
+
+    delete_channel(a2b);
+    delete_channel(b2a);
+}
+
+static void test_channel_fd_stressful_echo(void) {
+    channel_echo_thread_t *et;
+
+    channel_t *a2b;
+    channel_t *b2a;
+
+    new_channel_fd_pipe(&a2b, &b2a);
+
+    et = new_channel_echo_thread(b2a);
+    TEST_ASSERT_NOT_NULL(et);
+
+    test_chn_stressful_echo(a2b, 5);
+
+    TEST_ASSERT_EQUAL_INT(CHN_SUCCESS, 
+            delete_channel_echo_thread(et));
 
     delete_channel(a2b);
     delete_channel(b2a);
@@ -62,4 +83,5 @@ static void test_channel_fd_echo(void) {
 
 void channel_fd_tests(void) {
     RUN_TEST(test_channel_fd_echo);
+    RUN_TEST(test_channel_fd_stressful_echo);
 }
