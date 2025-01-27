@@ -7,7 +7,7 @@
 #include <pthread.h>
 
 #include "chrpc/channel.h"
-#include "chutil/list.h"
+#include "chutil/queue.h"
 
 // A local channel will be two endpoints within the same 
 // process. The endpoints will be threadsafe.
@@ -36,7 +36,7 @@ typedef struct _channel_local_t {
     pthread_mutex_t mut;
 
     // List<channel_msg_t>
-    list_t *queue;
+    queue_t *queue;
 } channel_local_t;
 
 extern const channel_impl_t * const CHANNEL_LOCAL_IMPL;

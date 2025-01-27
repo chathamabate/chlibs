@@ -35,6 +35,18 @@ typedef uint8_t chrpc_status_t;
 #define CHRPC_EMPTY_STRUCT_TYPE 4
 #define CHRPC_STRUCT_TYPE_TOO_LARGE 5
 #define CHRPC_MALFORMED_TYPE 6
+#define CHRPC_SERVER_CREATION_ERROR 7
+#define CHRPC_SERVER_FULL 8
+#define CHRPC_UKNOWN_ENDPOINT 9
+#define CHRPC_ARGUMENT_MISMATCH 10
+#define CHRPC_CLIENT_CHANNEL_EMTPY 11
+#define CHRPC_CLIENT_CHANNEL_ERROR 12 
+#define CHRPC_BAD_REQUEST 13
+#define CHRPC_SERVER_INTERNAL_ERROR 14
+#define CHRPC_DISCONNECT 15
+#define CHRPC_BAD_RESPONSE 16
+#define CHRPC_CLIENT_CREATION_ERROR 17
+#define CHRPC_TOO_MANY_ARGUMENTS 18
 
 typedef uint8_t chrpc_type_id_t;
 
@@ -135,7 +147,7 @@ void delete_chrpc_type(chrpc_type_t *ct);
 // found in chutil. (Really just because the channel interface uses buffers)
 
 chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t buf_len, size_t *written);
-chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t **ct, size_t *readden);
+chrpc_status_t chrpc_type_from_buffer(chrpc_type_t **ct, const uint8_t *buf, size_t buf_len, size_t *readden);
 
 // Make a copy of a given type.
 chrpc_type_t *new_chrpc_type_copy(const chrpc_type_t *ct);

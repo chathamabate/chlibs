@@ -97,15 +97,16 @@ void sys_init(void) {
     // We've initialized our system state!
     // Now we can call log!
 
-    // All threads will block SIGINT.
+    // All threads will block SIGINT and SIGPIPE
     // The signal thread will be the only one which actually
     // services the pending signal.
     sigset_t set;
     sigemptyset(&set);
     sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGPIPE);
     s = pthread_sigmask(SIG_BLOCK, &set, NULL);
     if (s) {
-        log_fatal_p(true, "Failed to block SIGINT. (%d)", s);
+        log_fatal_p(true, "Failed to block SIGINT and SIGPIPE. (%d)", s);
     }
 
     // Spawn our signal handling thread. 

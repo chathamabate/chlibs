@@ -3,6 +3,7 @@
 #include "chrpc/channel.h"
 #include "chsys/mem.h"
 #include "chutil/list.h"
+#include "chutil/queue.h"
 #include <pthread.h>
 #include <string.h>
 
@@ -20,17 +21,19 @@ const channel_impl_t * const CHANNEL_LOCAL_IMPL = &_CHANNEL_LOCAL_IMPL;
 
 channel_status_t new_channel_local(channel_local_t **chn_l, 
         const channel_local_config_t *cfg) {
-    if (!cfg) {
+    if (!cfg || cfg->queue_depth == 0) {
         return CHN_INVALID_ARGS;
     }
 
     channel_local_t *chn_val = safe_malloc(sizeof(channel_local_t));
-    chn_val->cfg.max_msg_size = cfg->max_msg_size;
-    chn_val->cfg.queue_depth = cfg->queue_depth;
-    chn_val->cfg.write_over = cfg->write_over;
+    chn_val->cfg = *cfg;
 
-    pthread_mutex_init(&(chn_val->mut), NULL);
-    chn_val->queue = new_list(LINKED_LIST_IMPL, sizeof(channel_msg_t));
+    if (pthread_mutex_init(&(chn_val->mut), NULL)) {
+        safe_free(chn_val);
+        return CHN_UNKNOWN_ERROR;
+    }
+
+    chn_val->queue = new_queue(cfg->queue_depth, sizeof(channel_msg_t));
 
     *chn_l = chn_val;
 
@@ -38,13 +41,13 @@ channel_status_t new_channel_local(channel_local_t **chn_l,
 }
 
 channel_status_t delete_channel_local(channel_local_t *chn_l) {
-    channel_msg_t *iter;
-    l_reset_iterator(chn_l->queue);
-    while ((iter = l_next(chn_l->queue))) {
-        safe_free(iter->msg_buf);
+
+    channel_msg_t m;
+    while (q_poll(chn_l->queue, &m) == 0) {
+        safe_free(m.msg_buf); 
     }
 
-    delete_list(chn_l->queue);
+    delete_queue(chn_l->queue);
     pthread_mutex_destroy(&(chn_l->mut));
     safe_free(chn_l);
 
@@ -68,7 +71,7 @@ channel_status_t chn_l_send(channel_local_t *chn_l, const void *msg, size_t len)
 
     pthread_mutex_lock(&(chn_l->mut));
 
-    if (cfg->queue_depth > 0 && l_len(chn_l->queue) == cfg->queue_depth) {
+    if (q_len(chn_l->queue) == q_cap(chn_l->queue)) {
 
         // If we are here, the channel is full!
 
@@ -80,7 +83,7 @@ channel_status_t chn_l_send(channel_local_t *chn_l, const void *msg, size_t len)
         channel_msg_t oldest_msg;
 
         // When write over is on, we just toss the oldest message.
-        l_poll(chn_l->queue, (void *)&oldest_msg);
+        q_poll(chn_l->queue, (void *)&oldest_msg);
 
         safe_free(oldest_msg.msg_buf);
     }
@@ -90,7 +93,7 @@ channel_status_t chn_l_send(channel_local_t *chn_l, const void *msg, size_t len)
         .msg_buf = safe_malloc(len),
     };
     memcpy(local_msg.msg_buf, msg, len);
-    l_push(chn_l->queue, &local_msg);
+    q_push(chn_l->queue, &local_msg);
 
 end:
     pthread_mutex_unlock(&(chn_l->mut));
@@ -110,10 +113,10 @@ channel_status_t chn_l_incoming_len(channel_local_t *chn_l, size_t *len) {
 
     pthread_mutex_lock(&(chn_l->mut));
 
-    if (l_len(chn_l->queue) == 0) {
+    if (q_len(chn_l->queue) == 0) {
         return_status = CHN_NO_INCOMING_MSG;
     } else {
-        const channel_msg_t *msg = (const channel_msg_t *)l_get(chn_l->queue, 0);
+        const channel_msg_t *msg = (const channel_msg_t *)q_peek(chn_l->queue);
         *len = msg->msg_size;
     }
 
@@ -129,12 +132,12 @@ channel_status_t chn_l_receive(channel_local_t *chn_l, void *buf, size_t len, si
 
     // Is there a message to receive?
     
-    if (l_len(chn_l->queue) == 0) {
+    if (q_len(chn_l->queue) == 0) {
         return_status = CHN_NO_INCOMING_MSG;
         goto end;
     }
 
-    const channel_msg_t *msg = (const channel_msg_t *)l_get(chn_l->queue, 0);
+    const channel_msg_t *msg = (const channel_msg_t *)q_peek(chn_l->queue);
     if (msg->msg_size > len) {
         return_status = CHN_BUFFER_TOO_SMALL;
         goto end;
@@ -143,7 +146,7 @@ channel_status_t chn_l_receive(channel_local_t *chn_l, void *buf, size_t len, si
     // We have confirmed we can poll!
     
     channel_msg_t local_msg;
-    l_poll(chn_l->queue, &local_msg);
+    q_poll(chn_l->queue, &local_msg);
 
     // Our buffer is big enough! we can perform the receive!
     memcpy(buf, local_msg.msg_buf, local_msg.msg_size);

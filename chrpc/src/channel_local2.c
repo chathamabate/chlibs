@@ -124,3 +124,57 @@ channel_status_t chn_l2_receive(channel_local2_t *chn_l2, void *buf, size_t len,
 
     return chn_l_receive(chn_l, buf, len, readden);
 }
+
+channel_status_t new_channel_local2_pipe(const channel_local_config_t *core_cfg, 
+        channel_local2_core_t **core, channel_t **a2b, channel_t **b2a) {
+    channel_status_t status;
+
+    channel_local2_core_t *co = NULL;
+    channel_t *a_to_b = NULL;
+    channel_t *b_to_a = NULL;
+
+    status = new_channel_local2_core(&co, core_cfg);
+
+    if (status == CHN_SUCCESS) {
+        channel_local2_config_t a2b_cfg = {
+            .a2b_direction = true,
+            .core = co
+        };
+        status = new_channel(CHANNEL_LOCAL2_IMPL, &a_to_b, (void *)&a2b_cfg);
+    }
+
+    if (status == CHN_SUCCESS) {
+        channel_local2_config_t b2a_cfg = {
+            .a2b_direction = false,
+            .core = co
+        };
+        status = new_channel(CHANNEL_LOCAL2_IMPL, &b_to_a, (void *)&b2a_cfg);
+    }
+
+    if (status == CHN_SUCCESS) {
+        *core = co;
+        *a2b = a_to_b;
+        *b2a = b_to_a;
+
+        return CHN_SUCCESS;
+    }
+
+    // Error case!
+    if (b_to_a) {
+        delete_channel(b_to_a);
+    }
+
+    if (a_to_b) {
+        delete_channel(a_to_b);
+    }
+
+    if (co) {
+        delete_channel_local2_core(co);
+    }
+
+    *core = NULL;
+    *a2b = NULL;
+    *b2a = NULL;
+
+    return status;
+}

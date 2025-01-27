@@ -200,7 +200,7 @@ chrpc_status_t chrpc_type_to_buffer(const chrpc_type_t *ct, uint8_t *buf, size_t
     return CHRPC_SUCCESS;
 }
 
-chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t **ct, size_t *readden) {
+chrpc_status_t chrpc_type_from_buffer(chrpc_type_t **ct, const uint8_t *buf, size_t buf_len, size_t *readden) {
     if (buf_len < 1) {
         return CHRPC_UNEXPECTED_END;
     }
@@ -221,7 +221,7 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
         size_t array_field_type_readden = 0; 
         
         chrpc_status_t rec_status = 
-            chrpc_type_from_buffer(buf + 1, buf_len - 1, &array_field_type, &array_field_type_readden);
+            chrpc_type_from_buffer(&array_field_type, buf + 1, buf_len - 1, &array_field_type_readden);
 
         if (rec_status != CHRPC_SUCCESS) {
             return rec_status;
@@ -256,7 +256,7 @@ chrpc_status_t chrpc_type_from_buffer(uint8_t *buf, size_t buf_len, chrpc_type_t
 
         for (size_t i = 0; i < num_fields; i++) {
             size_t field_readden; 
-            rec_status = chrpc_type_from_buffer(buf + pos, buf_len - pos, &(fields[i]), &field_readden);
+            rec_status = chrpc_type_from_buffer(&(fields[i]), buf + pos, buf_len - pos, &field_readden);
 
             // Error case, remember to clean up all previously made types.
             if (rec_status != CHRPC_SUCCESS) {

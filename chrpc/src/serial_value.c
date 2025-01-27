@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 
 // A "Blockable" Type is a type who's value will always exist in its serialized form.
 // For example an INT16 is blockable since to serial an integer, its value is just copied directly to the buffer.
@@ -853,6 +854,55 @@ chrpc_status_t chrpc_inner_value_to_buffer(const chrpc_type_t *ct, const chrpc_i
     return CHRPC_SUCCESS;
 }
 
+chrpc_status_t chrpc_value_to_buffer(const chrpc_value_t *v, uint8_t *buf, size_t buf_len, size_t *written) {
+    chrpc_status_t status;
+
+    size_t type_written;
+    status = chrpc_type_to_buffer(v->type, buf, buf_len, &type_written);
+    if (status != CHRPC_SUCCESS) {
+        return status;
+    }
+
+    size_t val_written;
+    status = chrpc_inner_value_to_buffer(v->type, v->value, buf + type_written, buf_len - type_written, &val_written);
+
+    *written = type_written + val_written;
+
+    return status;
+}
+
+chrpc_status_t chrpc_value_to_buffer_with_length(const chrpc_value_t *v, uint8_t *buf, size_t buf_len, size_t *written) {
+    chrpc_status_t status;
+
+    size_t total_written = 0;
+
+    if (buf_len - total_written < sizeof(uint32_t)) {
+        return CHRPC_BUFFER_TOO_SMALL;
+    }
+
+    uint32_t *len_prefix = (uint32_t *)(buf + total_written);
+
+    // Reserve space for length.
+    total_written += sizeof(uint32_t);
+
+    if (v) {
+        size_t w;
+        status = chrpc_value_to_buffer(v, buf + total_written, buf_len - total_written, &w);
+
+        if (status != CHRPC_SUCCESS) {
+            return status;
+        }
+
+        *len_prefix = w;
+        total_written += w;
+    } else {
+        *len_prefix = 0;
+    }
+
+    *written = total_written;
+    return CHRPC_SUCCESS;
+}
+
 // Assumes ct is primitive, but not a string.
 static chrpc_status_t chrpc_numeric_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner_value_t **iv, const uint8_t *buf, size_t buf_len, size_t *readden) {
     chrpc_inner_value_t *ivp = (chrpc_inner_value_t *)safe_malloc(sizeof(chrpc_inner_value_t));
@@ -1139,5 +1189,30 @@ chrpc_status_t chrpc_inner_value_from_buffer(const chrpc_type_t *ct, chrpc_inner
 
     // Otherwise, composite array.
     return chrpc_cmp_array_inner_value_from_buffer(ct, iv, buf, buf_len, readden);
+}
+
+chrpc_status_t chrpc_value_from_buffer(chrpc_value_t **v, const uint8_t *buf, size_t buf_len, size_t *readden) {
+    chrpc_status_t status;
+
+    chrpc_type_t *ct;
+    chrpc_inner_value_t *iv;
+
+    size_t type_readden;
+    status = chrpc_type_from_buffer(&ct, buf, buf_len, &type_readden);
+    if (status != CHRPC_SUCCESS) {
+        return status;
+    }
+
+    size_t val_readden;
+    status = chrpc_inner_value_from_buffer(ct, &iv, buf + type_readden, buf_len - type_readden, &val_readden);
+    if (status != CHRPC_SUCCESS) {
+        delete_chrpc_type(ct);
+        return status;
+    }
+
+    *readden = type_readden + val_readden;
+    *v = new_chrpc_value_from_pair(ct, iv);
+
+    return CHRPC_SUCCESS;
 }
 

@@ -44,4 +44,8 @@ channel_status_t chn_l2_refresh(channel_local2_t *chn_l2);
 channel_status_t chn_l2_incoming_len(channel_local2_t *chn_l2, size_t *len);
 channel_status_t chn_l2_receive(channel_local2_t *chn_l2, void *buf, size_t len, size_t *readden); 
 
+// Helper function for easily creating a channel_local2.
+channel_status_t new_channel_local2_pipe(const channel_local_config_t *core_cfg, 
+        channel_local2_core_t **core, channel_t **a2b, channel_t **b2a);
+
 #endif
