@@ -8,6 +8,23 @@
 #include "chutil/queue.h"
 #include <stdbool.h>
 
+// A channel will send a formatted message across the given file descriptor.
+//
+// 1-Byte Start Magic Value
+// 4-Byte Unsigned Length
+// ... Data ... (Length Bytes)
+// 1-Byte End Magic Value
+//
+// NOTE: I originally had this as 4 byte magic values, but this was extremely
+// annoying to implement IMO.
+
+#define CHN_FD_START_MAGIC 0x1E
+#define CHN_FD_END_MAGIC   0x2A
+
+#define CHN_FD_MSG_SIZE(len) \
+    (sizeof(uint8_t) + sizeof(uint32_t) + (len) + sizeof(uint8_t))
+
+
 typedef struct _channel_fd_config_t {
     size_t queue_depth;
 
