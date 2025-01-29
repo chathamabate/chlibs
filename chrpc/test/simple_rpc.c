@@ -103,7 +103,7 @@ static chrpc_server_command_t basic_server_disconnect(basic_server_state_t *bss,
     return CHRPC_SC_DISCONNECT;
 }
 
-#define BASIC_SERVER_MAX_CLIENTS 5
+#define BASIC_SERVER_MAX_CLIENTS 10
 chrpc_server_t *new_basic_server(void) {
     chrpc_endpoint_set_t *eps = new_chrpc_endpoint_set_va(
         new_chrpc_endpoint_va(
@@ -144,7 +144,7 @@ chrpc_server_t *new_basic_server(void) {
     chrpc_server_attrs_t attrs = {
         .max_connections = BASIC_SERVER_MAX_CLIENTS, 
         .max_msg_size = 0x1000,
-        .num_workers = 3,
+        .num_workers = 8,
         .worker_usleep_amt = 100
     };
 

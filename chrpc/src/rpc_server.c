@@ -12,6 +12,7 @@
 #include "chutil/map.h"
 #include "chutil/queue.h"
 #include "chutil/string.h"
+#include "chsys/log.h"
 #include <pthread.h>
 #include <string.h>
 #include <stdarg.h>
@@ -503,7 +504,7 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, const chrpc_s
 
     safe_pthread_mutex_init(&(s->q_mut), NULL);
     s->num_channels = 0;
-    s->channels_q = new_queue(s->attrs.max_connections, sizeof(channel_t *));
+    s->q = new_queue(s->attrs.max_connections, sizeof(chrpc_queue_ele_t));
 
     s->worker_ids = (pthread_t *)safe_malloc(sizeof(pthread_t) * s->attrs.num_workers);
     safe_pthread_mutex_init(&(s->should_exit_mut), NULL);
@@ -551,12 +552,12 @@ void delete_chrpc_server(chrpc_server_t *server) {
 
     // Cleanup channel queue.
 
-    channel_t *chan; 
-    while (q_poll(server->channels_q, &chan) == 0) {
-        delete_channel(chan);
+    chrpc_queue_ele_t ele;
+    while (q_poll(server->q, &ele) == 0) {
+        delete_channel(ele.chn);
     }
 
-    delete_queue(server->channels_q);
+    delete_queue(server->q);
     safe_pthread_mutex_destroy(&(server->q_mut));
 
     // Finally, delete endpoint set.
@@ -583,9 +584,14 @@ chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn)
 
     safe_pthread_mutex_lock(&(server->q_mut));
 
-    if (server->num_channels == q_cap(server->channels_q)) {
+    if (server->num_channels == q_cap(server->q)) {
         ret_val = CHRPC_SERVER_FULL;
     } else {
+        channel_id_t chn_id = server->id_counter++;
+        if (chn_id > server->id_counter) {
+            log_fatal("Server running for too long, out of IDs.");
+        }
+
         q_push(server->channels_q, &chn);
         server->num_channels++; 
         ret_val = CHRPC_SUCCESS;

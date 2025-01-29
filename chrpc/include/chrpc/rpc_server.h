@@ -13,9 +13,14 @@
 #include <pthread.h>
 #include <unistd.h>
 
+// I'd like to improve this by adding given disconnect/connect endpoints.
+// Plus connection IDs.
+
 #define CHRPC_ENDPOINT_MAX_ARGS 10
 #define CHRPC_ENDPOINT_SET_MAX_SIZE 300
 #define CHRPC_SERVER_BUF_MIN_SIZE 0x80
+
+typedef uint64_t channel_id_t;
 
 typedef enum _chrpc_server_command_t {
 
@@ -44,7 +49,7 @@ typedef enum _chrpc_server_command_t {
 // The command returned determines server behavoir after sending back the return value.
 // For example, maybe this is a "disconnect" endpoint, in which case CHRPC_SC_DISCONNECT should be returned.
 // This tells the server to destroy the channel instead of keeping it around.
-typedef chrpc_server_command_t (*chrpc_endpoint_ft)(void *server_state, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args);
+typedef chrpc_server_command_t (*chrpc_endpoint_ft)(channel_id_t id, void *server_state, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args);
 
 typedef struct _chrpc_endpoint_t {
     // Going to use chutil string here because it helps with hashing later.
@@ -103,7 +108,6 @@ void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set);
 // Returns NULL if name is non-existent in the endpoint set.
 const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep_set, const char *name);
 
-
 typedef struct _chrpc_server_attrs_t {
 
     // NOTE: When we create our response, it must not be larger than the max message size of the 
@@ -115,18 +119,33 @@ typedef struct _chrpc_server_attrs_t {
     size_t max_connections;
     size_t num_workers;
 
-    size_t worker_usleep_amt;
+    // How long a worker should sleep in micro seconds when there is no work to be done.
+    uint32_t worker_usleep_amt;
 
+    // If a connection has gone this long without sending a request, forceibly disconnect.
+    // When set to 0, there will be no such timeouts. Clients can stay idle idefinitely.
+    uint32_t idle_timeout;
 } chrpc_server_attrs_t;
 
+typedef struct _chrpc_queue_ele_t {
+    // Given channel ID.
+    channel_id_t id;
+
+    // Number of seconds since last request.
+    uint32_t secs_idle;
+
+    channel_t *chn;
+} chrpc_queue_ele_t;
+
 typedef struct _chrpc_server_t {
+
     // User defined, can be NULL.
     // (Remember, if actually stateful, it is the user's responsibility to synchronize!)
     void *server_state;
 
     chrpc_server_attrs_t attrs;
 
-    // NOTE: q_mut encloses num_channels and channels_q.
+    // NOTE: q_mut encloses id_counter, num_channels, and q.
     // Worker threads will pop channels off of the channels queue.
     // When a channel is popped off the queue, it will be checked for incoming messages.
     // If there is an incoming message, it will be parsed and executed.
@@ -135,9 +154,18 @@ typedef struct _chrpc_server_t {
     // If there is an error using the channel, it will be assumed that said channel has
     // disconnected. If so, it will be destroyed.
     // Otherwise, it will be pushed back onto the queue.
+    //
+    // NOTE: num_channels is required since not all active channels will be in the queue at once.
+    //
+    // NOTE: The q will have elements of chrpc_queue_ele_t.
     pthread_mutex_t q_mut;
+
+    // NOTE: Right now, IDs will just coninuously incrememnt.
+    // The program will crash if this counter loops back to 0.
+    channel_id_t id_counter;
+
     size_t num_channels;
-    queue_t *channels_q;
+    queue_t *q;
 
     // Workers will be spawned at server creation time.
     // Workers kinda connect channels and endpoints.. doing the work required
