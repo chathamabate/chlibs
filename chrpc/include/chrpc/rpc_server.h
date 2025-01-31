@@ -11,6 +11,7 @@
 #include "chutil/string.h"
 
 #include <pthread.h>
+#include <time.h>
 #include <unistd.h>
 
 // I'd like to improve this by adding given disconnect/connect endpoints.
@@ -124,7 +125,7 @@ typedef struct _chrpc_server_attrs_t {
 
     // If a connection has gone this long without sending a request, forceibly disconnect.
     // When set to 0, there will be no such timeouts. Clients can stay idle idefinitely.
-    uint32_t idle_timeout;
+    time_t idle_timeout;
 } chrpc_server_attrs_t;
 
 typedef struct _chrpc_queue_ele_t {
@@ -132,7 +133,7 @@ typedef struct _chrpc_queue_ele_t {
     channel_id_t id;
 
     // Number of seconds since last request.
-    uint32_t secs_idle;
+    time_t since_last_req;
 
     channel_t *chn;
 } chrpc_queue_ele_t;
@@ -161,7 +162,7 @@ typedef struct _chrpc_server_t {
     pthread_mutex_t q_mut;
 
     // NOTE: Right now, IDs will just coninuously incrememnt.
-    // The program will crash if this counter loops back to 0.
+    // The server will be "full" if the counter ever hits the max value.
     channel_id_t id_counter;
 
     size_t num_channels;

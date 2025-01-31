@@ -14,9 +14,11 @@
 #include "chutil/string.h"
 #include "chsys/log.h"
 #include <pthread.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 
 chrpc_endpoint_t *new_chrpc_endpoint(const char *n, chrpc_endpoint_ft f, chrpc_type_t *rt, chrpc_type_t **args, uint32_t num_args) {
@@ -430,11 +432,11 @@ static void *chrpc_server_worker_routine(void *arg) {
 
         // Otherwise, let's do actual work.
         
-        channel_t *chn;
+        chrpc_queue_ele_t ele;
         int e;
 
         safe_pthread_mutex_lock(&(server->q_mut));
-        e = q_poll(server->channels_q, &chn);
+        e = q_poll(server->q, &ele);
         safe_pthread_mutex_unlock(&(server->q_mut));
 
         if (e) {
@@ -451,7 +453,7 @@ static void *chrpc_server_worker_routine(void *arg) {
         //
         // If an error occurs while working with the channel, but an error code is successfully
         // sent back to the client, this field will be SUCCESS.
-        chrpc_status_t status = chrpc_poll_channel(chn, server, buf);
+        chrpc_status_t status = chrpc_poll_channel(ele.chn, server, buf);
 
         // Basically any bubbled up code that is not a success or a no-op indicator
         // will trigger a forced disconnect of the channel.
@@ -461,7 +463,7 @@ static void *chrpc_server_worker_routine(void *arg) {
         // This will cause CHRPC_DISCONNECT to be returned as a status.
         if (status != CHRPC_SUCCESS && status != CHRPC_CLIENT_CHANNEL_EMTPY) {
             // Fatal Error Case!
-            delete_channel(chn);
+            delete_channel(ele.chn);
 
             safe_pthread_mutex_lock(&(server->q_mut));
             server->num_channels--;
@@ -473,6 +475,13 @@ static void *chrpc_server_worker_routine(void *arg) {
         // SUCCESS or NO INCOMING MESSAGE.
             
         if (status == CHRPC_CLIENT_CHANNEL_EMTPY) {
+            time_t now = time(NULL);
+
+            if (server->attrs.idle_timeout > 0 && 
+                    (now - ele.since_last_req) > server->attrs.idle_timeout) {
+                // Remove case... my head hurts though tbh..
+            }
+
             // If no work was done, sleep a lil'
             usleep(server->attrs.worker_usleep_amt);
         }
@@ -503,6 +512,7 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, const chrpc_s
     s->attrs = *attrs;
 
     safe_pthread_mutex_init(&(s->q_mut), NULL);
+    s->id_counter = 0;
     s->num_channels = 0;
     s->q = new_queue(s->attrs.max_connections, sizeof(chrpc_queue_ele_t));
 
@@ -586,17 +596,25 @@ chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn)
 
     if (server->num_channels == q_cap(server->q)) {
         ret_val = CHRPC_SERVER_FULL;
-    } else {
-        channel_id_t chn_id = server->id_counter++;
-        if (chn_id > server->id_counter) {
-            log_fatal("Server running for too long, out of IDs.");
-        }
+        goto end;
+    } 
 
-        q_push(server->channels_q, &chn);
-        server->num_channels++; 
-        ret_val = CHRPC_SUCCESS;
+    if (server->id_counter == UINT64_MAX) {
+        ret_val = CHRPC_SERVER_FULL;
+        goto end;
     }
 
+    chrpc_queue_ele_t ele = {
+        .chn = chn,
+        .id = server->id_counter++,
+        .since_last_req = time(NULL)
+    };
+
+    q_push(server->q, &ele);
+    server->num_channels++; 
+    ret_val = CHRPC_SUCCESS;
+
+end:
     safe_pthread_mutex_unlock(&(server->q_mut));
 
     return ret_val;
