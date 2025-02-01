@@ -148,6 +148,7 @@ chrpc_server_t *new_basic_server(void) {
         .max_connections = BASIC_SERVER_MAX_CLIENTS, 
         .max_msg_size = 0x1000,
         .num_workers = BASIC_SERVER_MAX_CLIENTS,
+        .on_disconnect = NULL,
         .worker_usleep_amt = 100
     };
 

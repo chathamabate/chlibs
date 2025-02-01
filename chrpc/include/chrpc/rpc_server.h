@@ -126,6 +126,12 @@ typedef struct _chrpc_server_attrs_t {
     // If a connection has gone this long without sending a request, forceibly disconnect.
     // When set to 0, there will be no such timeouts. Clients can stay idle idefinitely.
     time_t idle_timeout;
+
+    // This is a function which is called when a client disconnects for any reason.
+    //
+    // I feel a little weird that this is not in the endpoint set definition.
+    // But at the same time, this isn't really an endpoint is it?
+    void (*on_disconnect)(channel_id_t id, void *server_state);
 } chrpc_server_attrs_t;
 
 typedef struct _chrpc_queue_ele_t {

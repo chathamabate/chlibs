@@ -488,6 +488,10 @@ static void *chrpc_server_worker_routine(void *arg) {
             safe_pthread_mutex_lock(&(server->q_mut));
             server->num_channels--;
             safe_pthread_mutex_unlock(&(server->q_mut));
+
+            if (server->attrs.on_disconnect) {
+                server->attrs.on_disconnect(ele.id, server->server_state);
+            }
         } else {
             safe_pthread_mutex_lock(&(server->q_mut));
             q_push(server->q, &ele);
