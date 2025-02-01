@@ -5,8 +5,10 @@
 
 #include "chrpc/rpc_server.h"
 #include "chrpc/serial_value.h"
+#include "chsys/sys.h"
 #include "chsys/wrappers.h"
 #include "chsys/mem.h"
+#include "chsys/log.h"
 
 #include "chutil/map.h"
 #include "chutil/string.h"
@@ -82,6 +84,39 @@ typedef struct _chatroom_state_t {
     hash_map_t *mailboxes;
 } chatroom_state_t;
 
+
+static chatroom_state_t *new_chatroom_state(void) {
+    chatroom_state_t *cs = (chatroom_state_t *)safe_malloc(sizeof(chatroom_state_t));
+
+    safe_pthread_rwlock_init(&(cs->global_lock), NULL);
+    cs->id_map = new_hash_map(sizeof(channel_id_t), sizeof(string_t *), 
+            chrpc_channel_id_hash_func, chrpc_channel_id_equals_func);
+    cs->mailboxes = new_hash_map(sizeof(string_t *), sizeof(chatroom_mailbox_t *),
+            (hash_map_hash_ft)s_indirect_hash, (hash_map_key_eq_ft)s_indirect_equals);
+
+    return cs;
+}
+
+static void  delete_chatroom_state(chatroom_state_t *cs) {
+    // This assumes no one else is using the chatroom state.
+    // All worker threads are done working.
+    safe_pthread_rwlock_destroy(&(cs->global_lock));
+
+    // We'll delete usernames when iterating over the mailbox map.
+    delete_hash_map(cs->id_map);
+    
+    key_val_pair_t kvp;
+
+    hm_reset_iterator(cs->mailboxes);
+    while ((kvp = hm_next_kvp(cs->mailboxes)) != HASH_MAP_EXHAUSTED) {
+        delete_string(*(string_t **)kvp_key(cs->mailboxes, kvp));
+        delete_chatroom_mailbox(*(chatroom_mailbox_t **)kvp_val(cs->mailboxes, kvp));
+    }
+
+    delete_hash_map(cs->mailboxes);
+    safe_free(cs);
+}
+
 static chrpc_value_t *new_chatroom_error(const char *msg) {
     return new_chrpc_struct_value_va(
         new_chrpc_b8_value(1),
@@ -95,6 +130,8 @@ static chrpc_value_t *new_chatroom_success(void) {
 
 // Args: String username; Returns: {Byte error_code, String Message} 
 static chrpc_server_command_t chatroom_login(channel_id_t id, chatroom_state_t *cs, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+    (void)num_args;
+
     const char *username_cstr = args[0]->value->str;
 
     size_t username_len = strlen(username_cstr);
@@ -140,6 +177,8 @@ static chrpc_server_command_t chatroom_login(channel_id_t id, chatroom_state_t *
 
 // Args: String recipient, String message; Returns: {Byte error_code, String Message} 
 static chrpc_server_command_t chatroom_send_message(channel_id_t id, chatroom_state_t *cs, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+    (void)num_args;
+
     const char *recip_cstr = args[0]->value->str;
     const char *msg_cstr = args[1]->value->str;
 
@@ -174,7 +213,7 @@ static chrpc_server_command_t chatroom_send_message(channel_id_t id, chatroom_st
         safe_pthread_rwlock_wrlock(&(cs->global_lock));
         key_val_pair_t kvp;
         hm_reset_iterator(cs->mailboxes);
-        while ((kvp = hm_next_kvp(cs->mailboxes))) {
+        while ((kvp = hm_next_kvp(cs->mailboxes)) != HASH_MAP_EXHAUSTED) {
             chatroom_message_t *msg = new_chatroom_message(id, true, msg_cstr);
             chatroom_mailbox_t *mb = *(chatroom_mailbox_t **)kvp_val(cs->mailboxes, kvp);
 
@@ -196,19 +235,31 @@ static chrpc_server_command_t chatroom_send_message(channel_id_t id, chatroom_st
     safe_pthread_rwlock_rdlock(&(cs->global_lock));
     string_t *recip = new_string_from_cstr(recip_cstr);
 
-    chatroom_mailbox_t **_mb;
-    _mb = hm_get(cs->mailboxes, &recip);
+    chatroom_mailbox_t **_recip_mb = hm_get(cs->mailboxes, &recip);
     delete_string(recip);
 
-    if (!_mb)  {
+    if (!_recip_mb)  {
         *ret = new_chatroom_error("Recipient could not be found");
     } else {
-        chatroom_mailbox_t *mb = *_mb;
+        // If we have a recipient, send a message to the recipient and the sender.
+        chatroom_mailbox_t *recip_mb = *_recip_mb;
         chatroom_message_t *msg = new_chatroom_message(id, false, msg_cstr);
 
-        safe_pthread_mutex_lock(&(mb->mb_mut));
-        l_push(mb->mb, &msg);
-        safe_pthread_mutex_unlock(&(mb->mb_mut));
+        safe_pthread_mutex_lock(&(recip_mb->mb_mut));
+        l_push(recip_mb->mb, &msg);
+        safe_pthread_mutex_unlock(&(recip_mb->mb_mut));
+
+        // Now craft sender message. (We know that the id exists in the map)
+        string_t *sender = *(string_t **)hm_get(cs->id_map, &id);
+        chatroom_mailbox_t *sender_mb = *(chatroom_mailbox_t **)hm_get(cs->mailboxes, &sender);
+
+        // The previous value in message can be overwritten safely as it has been given to the 
+        // recipient's queue.
+        msg = new_chatroom_message(id, false, msg_cstr);
+
+        safe_pthread_mutex_lock(&(sender_mb->mb_mut));
+        l_push(sender_mb->mb, &msg);
+        safe_pthread_mutex_unlock(&(sender_mb->mb_mut));
 
         *ret = new_chatroom_success();
     }
@@ -221,6 +272,9 @@ static chrpc_server_command_t chatroom_send_message(channel_id_t id, chatroom_st
 // Args: Nothing; Returns: {Byte general_message, String sender, String message_text}[]
 // (If ID is not logged in, no messages will be returned as id has no mailbox)
 static chrpc_server_command_t chatroom_poll(channel_id_t id, chatroom_state_t *cs, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+    (void)args;
+    (void)num_args;
+
     safe_pthread_rwlock_rdlock(&(cs->global_lock));
 
     string_t **_username = (string_t **)hm_get(cs->id_map, &id);
@@ -271,17 +325,39 @@ static chrpc_server_command_t chatroom_poll(channel_id_t id, chatroom_state_t *c
 static void chatroom_on_disconnect(channel_id_t id, chatroom_state_t *cs) {
     safe_pthread_rwlock_wrlock(&(cs->global_lock));
 
-    string_t **_username = (string_t **)hm_get(cs->id_map)
+    string_t **_username = (string_t **)hm_get(cs->id_map, &id);
 
-    if () {
+    if (_username) {
+        // We have a logged in user.
 
+        string_t *username = *_username;
+        hm_remove(cs->id_map, &id);
+
+        chatroom_mailbox_t *mb = hm_get(cs->mailboxes, &username);
+        hm_remove(cs->mailboxes, &username);
+
+        delete_chatroom_mailbox(mb);
+        delete_string(username);
     }
 
     safe_pthread_rwlock_unlock(&(cs->global_lock));
 }
 
-void new_chat_server(void) {
-    chrpc_endpoint_set_t *ep = new_chrpc_endpoint_set_va(
+void run_chat_server(void) {
+    chatroom_state_t *cs = new_chatroom_state();
+
+    chrpc_server_t *server;
+
+    chrpc_server_attrs_t attrs = {
+        .max_msg_size = 0x1000,
+        .max_connections = 20,
+        .num_workers = 4,
+        .worker_usleep_amt = 1000, // 1ms
+        .idle_timeout = 5,
+        .on_disconnect = (chrpc_server_disconnect_ft)chatroom_on_disconnect
+    };
+
+    chrpc_endpoint_set_t *eps = new_chrpc_endpoint_set_va(
         new_chrpc_endpoint_va(
             "login",
             (chrpc_endpoint_ft)chatroom_login,
@@ -323,9 +399,19 @@ void new_chat_server(void) {
             )
         )
     );
+
+    chrpc_status_t status = new_chrpc_server(&server, cs, &attrs, eps);
+    if (status != CHRPC_SUCCESS) {
+        log_fatal("Failed to create server");
+    }
+
+    delete_chrpc_server(server);
+    delete_chatroom_state(cs);
 }
 
 
 int main(void) {
-    printf("Hello From Server\n");
+    sys_init();
+    run_chat_server();
+    safe_exit(0);
 }

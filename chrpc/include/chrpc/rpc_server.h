@@ -52,6 +52,14 @@ typedef enum _chrpc_server_command_t {
 // This tells the server to destroy the channel instead of keeping it around.
 typedef chrpc_server_command_t (*chrpc_endpoint_ft)(channel_id_t id, void *server_state, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args);
 
+static inline uint32_t chrpc_channel_id_hash_func(const void *id) {
+    return ((*(const channel_id_t *)id * 12342343) + 7) * 3;
+}
+
+static inline bool chrpc_channel_id_equals_func(const void *id0, const void *id1) {
+    return *(const channel_id_t *)id0 == *(const channel_id_t *)id1;
+}
+
 typedef struct _chrpc_endpoint_t {
     // Going to use chutil string here because it helps with hashing later.
     string_t *name;
@@ -109,6 +117,8 @@ void delete_chrpc_endpoint_set(chrpc_endpoint_set_t *ep_set);
 // Returns NULL if name is non-existent in the endpoint set.
 const chrpc_endpoint_t *chrpc_endpoint_set_lookup(const chrpc_endpoint_set_t *ep_set, const char *name);
 
+typedef void (*chrpc_server_disconnect_ft)(channel_id_t id, void *server_state);
+
 typedef struct _chrpc_server_attrs_t {
 
     // NOTE: When we create our response, it must not be larger than the max message size of the 
@@ -131,7 +141,7 @@ typedef struct _chrpc_server_attrs_t {
     //
     // I feel a little weird that this is not in the endpoint set definition.
     // But at the same time, this isn't really an endpoint is it?
-    void (*on_disconnect)(channel_id_t id, void *server_state);
+    chrpc_server_disconnect_ft on_disconnect;
 } chrpc_server_attrs_t;
 
 typedef struct _chrpc_queue_ele_t {
