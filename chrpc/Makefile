@@ -22,6 +22,6 @@ _TEST_SRCS   := main.c \
 				endpoints.c \
 				serial_type.c \
 				serial_value.c \
-				simple_rpc.c
+				simple_rpc.c 
 
 include ../lib_builder_stub.mk
