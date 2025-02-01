@@ -45,10 +45,11 @@ typedef struct _basic_server_state_t {
 
 // Takes a user ID and a message, returns the size of the queue.
 // (u32, str) => u32
-static chrpc_server_command_t basic_server_push_msg(basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+static chrpc_server_command_t basic_server_push_msg(channel_id_t id, basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
     (void)num_args;
+    (void)id;
 
-    pthread_mutex_lock(&(bss->mut));
+    safe_pthread_mutex_lock(&(bss->mut));
 
     basic_message_t *msg = new_basic_message(args[0]->value->u32, 
             args[1]->value->str);
@@ -58,19 +59,20 @@ static chrpc_server_command_t basic_server_push_msg(basic_server_state_t *bss, c
     uint32_t q_size = l_len(bss->q);
     *ret = new_chrpc_u32_value(q_size);
 
-    pthread_mutex_unlock(&(bss->mut));
+    safe_pthread_mutex_unlock(&(bss->mut));
 
     return CHRPC_SC_KEEP_ALIVE;
 }
 
 // Give the number you'd like to poll, this returns at most that many messages as structs.
 // (u32) => {u32; str;}[]
-static chrpc_server_command_t basic_server_poll_msgs(basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+static chrpc_server_command_t basic_server_poll_msgs(channel_id_t id, basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
     (void)num_args;
+    (void)id;
 
     uint32_t requested = args[0]->value->u32;
 
-    pthread_mutex_lock(&(bss->mut));
+    safe_pthread_mutex_lock(&(bss->mut));
 
     uint32_t given = l_len(bss->q) < requested ? l_len(bss->q) : requested;
     chrpc_value_t **eles = (chrpc_value_t **)safe_malloc(given * sizeof(chrpc_value_t *));
@@ -89,12 +91,13 @@ static chrpc_server_command_t basic_server_poll_msgs(basic_server_state_t *bss, 
 
     *ret = new_chrpc_composite_nempty_array_value(eles, given);
 
-    pthread_mutex_unlock(&(bss->mut));
+    safe_pthread_mutex_unlock(&(bss->mut));
 
     return CHRPC_SC_KEEP_ALIVE;
 }
 
-static chrpc_server_command_t basic_server_disconnect(basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+static chrpc_server_command_t basic_server_disconnect(channel_id_t id, basic_server_state_t *bss, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+    (void)id;
     (void)bss;
     (void)ret;
     (void)args;
@@ -103,7 +106,7 @@ static chrpc_server_command_t basic_server_disconnect(basic_server_state_t *bss,
     return CHRPC_SC_DISCONNECT;
 }
 
-#define BASIC_SERVER_MAX_CLIENTS 10
+#define BASIC_SERVER_MAX_CLIENTS 16
 chrpc_server_t *new_basic_server(void) {
     chrpc_endpoint_set_t *eps = new_chrpc_endpoint_set_va(
         new_chrpc_endpoint_va(
@@ -144,7 +147,7 @@ chrpc_server_t *new_basic_server(void) {
     chrpc_server_attrs_t attrs = {
         .max_connections = BASIC_SERVER_MAX_CLIENTS, 
         .max_msg_size = 0x1000,
-        .num_workers = 8,
+        .num_workers = BASIC_SERVER_MAX_CLIENTS,
         .worker_usleep_amt = 100
     };
 
@@ -335,6 +338,7 @@ static void test_basic_server_incorrect_usage(void) {
     delete_chrpc_value(arg1);
 
     delete_basic_server(server);
+
     delete_chrpc_client(client);
     delete_channel_local2_core(core);
 }
@@ -376,6 +380,8 @@ static void *test_basic_server_parallel_clients_routine(void *arg) {
         delete_list(l);
     }
 
+    // NOTE: Here we disconnect, BEFORE deleting the client and CHANNEL/CORE!
+
     if (status == CHRPC_SUCCESS) {
         status = chrpc_client_send_argless_request(client, "disconnect", NULL);
     }
@@ -406,6 +412,8 @@ static void test_too_many_clients(void) {
     chrpc_status_t status;
     chrpc_server_t *server = new_basic_server();
 
+    // Two clients in the same thread???
+
     struct {
         channel_local2_core_t *core;
         chrpc_client_t *client;
@@ -431,11 +439,13 @@ static void test_too_many_clients(void) {
             &(clients[0].core), &(clients[0].client));
     TEST_ASSERT_TRUE(status == CHRPC_SUCCESS);
 
+    delete_basic_server(server); // Delete the server FIRST, before deleting clients.
+                                 // Otherwise you can use "disconnect endpoint".
+
     for (size_t i = 0; i < BASIC_SERVER_MAX_CLIENTS; i++) {
         delete_chrpc_client(clients[i].client);
         delete_channel_local2_core(clients[i].core);
     }
-    delete_basic_server(server);
 }
 
 static void test_small_channel(void) {
@@ -473,9 +483,9 @@ static void test_small_channel(void) {
     status = basic_client_poll_msgs(client, &l, 50);
     TEST_ASSERT_TRUE(status != CHRPC_SUCCESS);
 
+    delete_basic_server(server);
     delete_chrpc_client(client);
     delete_channel_local2_core(core);
-    delete_basic_server(server);
 }
 
 void chrpc_simple_rpc_tests(void) {

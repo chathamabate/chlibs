@@ -218,11 +218,12 @@ static inline bool chrpc_type_equals_wrapper(const chrpc_type_t *ct, const chrpc
 
 // This will craft and send a response to the given endpoint using the given buffer.
 // This assumes the args array is already populated with arguments of the expected types.
-static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_value_t **args, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_value_t **args, chrpc_queue_ele_t *ele, chrpc_server_t *server, uint8_t *buf) {
     chrpc_server_command_t cmd;
+    channel_t *chn = ele->chn;
 
     chrpc_value_t *ret_val = NULL;
-    cmd = ep->func(server->server_state, &ret_val, args, ep->num_args);
+    cmd = ep->func(ele->id, server->server_state, &ret_val, args, ep->num_args);
 
     if (!chrpc_type_equals_wrapper(ep->ret, ret_val)) {
         if (ret_val) {
@@ -244,7 +245,7 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     size_t written;
     chrpc_status_t status;
 
-    status = chrpc_type_to_buffer(server->resp_type, buf + total_written, server->attrs.max_msg_size, &written);
+    status = chrpc_type_to_buffer(server->resp_type, buf + total_written, mms - total_written, &written);
     total_written += written;
 
     // Write status flag.
@@ -298,7 +299,9 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     return CHRPC_SUCCESS;
 }
 
-static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, chrpc_queue_ele_t *ele, chrpc_server_t *server, uint8_t *buf) {
+    channel_t *chn = ele->chn;
+
     // Valid Chrpc Value found, is it the correct type tho?
     if (!chrpc_type_equals(server->req_type, req->type)) {
         return chrpc_send_error_response(chn, server, buf, CHRPC_BAD_REQUEST);
@@ -357,7 +360,7 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
     } else {
         // Otherwise, things went well! Let's attempt to actually use our endpoint.
 
-        status = chrpc_send_response(ep, given_args, chn, server, buf);
+        status = chrpc_send_response(ep, given_args, ele, server, buf);
     }
 
     // Regardless of what happened, let's clean up our arguments.
@@ -372,9 +375,11 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
 
 
 // In buf will have size server->attrs.max_msg_size.
-static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+static chrpc_status_t chrpc_poll_channel(chrpc_queue_ele_t *ele, chrpc_server_t *server, uint8_t *buf) {
     chrpc_status_t rpc_status;
     channel_status_t chn_status;
+
+    channel_t *chn = ele->chn;
 
     if (chn_refresh(chn) != CHN_SUCCESS) {
         return CHRPC_CLIENT_CHANNEL_ERROR;
@@ -403,7 +408,7 @@ static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server,
         return chrpc_send_error_response(chn, server, buf, rpc_status);
     }
 
-    rpc_status = chrpc_handle_request(req, chn, server, buf);
+    rpc_status = chrpc_handle_request(req, ele, server, buf);
 
     delete_chrpc_value(req);
 
@@ -453,43 +458,45 @@ static void *chrpc_server_worker_routine(void *arg) {
         //
         // If an error occurs while working with the channel, but an error code is successfully
         // sent back to the client, this field will be SUCCESS.
-        chrpc_status_t status = chrpc_poll_channel(ele.chn, server, buf);
+        chrpc_status_t status = chrpc_poll_channel(&ele, server, buf);
 
-        // Basically any bubbled up code that is not a success or a no-op indicator
-        // will trigger a forced disconnect of the channel.
-        // 
-        // This is not always in the case of an error.
-        // For example, the user can return CHRPC_SC_DISCONNECT from their routine.
-        // This will cause CHRPC_DISCONNECT to be returned as a status.
-        if (status != CHRPC_SUCCESS && status != CHRPC_CLIENT_CHANNEL_EMTPY) {
-            // Fatal Error Case!
+        // Whether or not we should disconnect the channel at the end.
+        bool disconnect = false;
+
+        // Whether or not the worker should wait a bit before looking for more work.
+        bool pause = false;
+
+        time_t now = time(NULL);
+        
+        if (status == CHRPC_CLIENT_CHANNEL_EMTPY) {
+            if (server->attrs.idle_timeout > 0 && 
+                    (now - ele.since_last_req) > server->attrs.idle_timeout) {
+                disconnect = true;
+            } 
+
+            pause = true;
+        } else if (status == CHRPC_SUCCESS) {
+            ele.since_last_req = now;
+        } else {
+            // An error or requested disconnect. (No pause in this case
+            disconnect = true; 
+        }
+
+        if (disconnect) {
             delete_channel(ele.chn);
 
             safe_pthread_mutex_lock(&(server->q_mut));
             server->num_channels--;
             safe_pthread_mutex_unlock(&(server->q_mut));
-
-            continue;
-        } 
-
-        // SUCCESS or NO INCOMING MESSAGE.
-            
-        if (status == CHRPC_CLIENT_CHANNEL_EMTPY) {
-            time_t now = time(NULL);
-
-            if (server->attrs.idle_timeout > 0 && 
-                    (now - ele.since_last_req) > server->attrs.idle_timeout) {
-                // Remove case... my head hurts though tbh..
-            }
-
-            // If no work was done, sleep a lil'
-            usleep(server->attrs.worker_usleep_amt);
+        } else {
+            safe_pthread_mutex_lock(&(server->q_mut));
+            q_push(server->q, &ele);
+            safe_pthread_mutex_unlock(&(server->q_mut));
         }
 
-        // Give channel back to the channel queue.
-        safe_pthread_mutex_lock(&(server->q_mut));
-        q_push(server->channels_q, &chn);
-        safe_pthread_mutex_unlock(&(server->q_mut));
+        if (pause) {
+            usleep(server->attrs.worker_usleep_amt);
+        }
     }
 
     // Should never make it here.
