@@ -115,7 +115,6 @@ static chrpc_server_command_t chatroom_login(channel_id_t id, chatroom_state_t *
 
     string_t *new_username = new_string_from_cstr(username_cstr);
 
-
     safe_pthread_rwlock_wrlock(&(cs->global_lock));
 
     bool taken = hm_contains(cs->mailboxes, &new_username);
@@ -192,43 +191,93 @@ static chrpc_server_command_t chatroom_send_message(channel_id_t id, chatroom_st
     }
 
     // Otherwise, we have an individual recipient.
+    // We can use the global read lock.
 
-
-    /*j
+    safe_pthread_rwlock_rdlock(&(cs->global_lock));
     string_t *recip = new_string_from_cstr(recip_cstr);
 
     chatroom_mailbox_t **_mb;
     _mb = hm_get(cs->mailboxes, &recip);
-
     delete_string(recip);
 
     if (!_mb)  {
         *ret = new_chatroom_error("Recipient could not be found");
-        goto global_unlock;
+    } else {
+        chatroom_mailbox_t *mb = *_mb;
+        chatroom_message_t *msg = new_chatroom_message(id, false, msg_cstr);
+
+        safe_pthread_mutex_lock(&(mb->mb_mut));
+        l_push(mb->mb, &msg);
+        safe_pthread_mutex_unlock(&(mb->mb_mut));
+
+        *ret = new_chatroom_success();
     }
 
-    // We have a logged in user, who is sending a valid message to an
-    // existing recipient. We will always succeed after this point.
-    chatroom_mailbox_t *mb = *_mb;
-    chatroom_message_t *m = new_chatroom_message(id, );
-
-    safe_pthread_mutex_lock(&(mb->mb_mut));
-    
-    safe_pthread_mutex_unlock(&(mb->mb_mut));
-
-global_unlock:
     safe_pthread_rwlock_unlock(&(cs->global_lock));
-    */
+
     return CHRPC_SC_KEEP_ALIVE;
 }
 
 // Args: Nothing; Returns: {Byte general_message, String sender, String message_text}[]
+// (If ID is not logged in, no messages will be returned as id has no mailbox)
 static chrpc_server_command_t chatroom_poll(channel_id_t id, chatroom_state_t *cs, chrpc_value_t **ret, chrpc_value_t **args, uint32_t num_args) {
+    safe_pthread_rwlock_rdlock(&(cs->global_lock));
+
+    string_t **_username = (string_t **)hm_get(cs->id_map, &id);
+
+    uint32_t num_msgs = 0;
+    chrpc_value_t **msgs = NULL;
+
+    if (_username) {
+        string_t *username = *_username;
+        chatroom_mailbox_t *mb = *(chatroom_mailbox_t **)hm_get(cs->mailboxes, &username);
+
+        safe_pthread_mutex_lock(&(mb->mb_mut));
+
+        num_msgs = l_len(mb->mb);
+        if (num_msgs > 20) {
+            num_msgs = 20;
+        }
+
+        msgs = (chrpc_value_t **)safe_malloc(sizeof(chrpc_value_t *) * num_msgs);
+
+        for (uint32_t i = 0; i < num_msgs; i++) {
+            chatroom_message_t *msg;
+            l_poll(mb->mb, &msg);
+
+            string_t **_sender_username = (string_t **)hm_get(cs->id_map, &(msg->sender));
+            const char *sender_username = _sender_username ? s_get_cstr(*_sender_username) : "$UNKNOWN";
+
+            msgs[i] = new_chrpc_struct_value_va(
+                new_chrpc_b8_value(msg->general_msg),
+                new_chrpc_str_value(sender_username),
+                new_chrpc_str_value(s_get_cstr(msg->msg))
+            );
+
+            delete_chatroom_message(msg);
+        }
+
+        safe_pthread_mutex_unlock(&(mb->mb_mut));
+    }
+
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+
+
+    *ret = new_chrpc_composite_nempty_array_value(msgs, num_msgs);
+    
     return CHRPC_SC_KEEP_ALIVE;
 }
 
 static void chatroom_on_disconnect(channel_id_t id, chatroom_state_t *cs) {
+    safe_pthread_rwlock_wrlock(&(cs->global_lock));
 
+    string_t **_username = (string_t **)hm_get(cs->id_map)
+
+    if () {
+
+    }
+
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
 }
 
 void new_chat_server(void) {
