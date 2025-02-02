@@ -18,104 +18,10 @@
 #include <pthread.h>
 #include <string.h>
 
-typedef struct _chatroom_message_t {
-    channel_id_t sender; // ID of sender.
-    bool general_msg;    // false = private message.
-    string_t *msg;
-} chatroom_message_t;
-
-static chatroom_message_t *new_chatroom_message(channel_id_t sender, bool general_message, const char *msg) {
-    chatroom_message_t *cm = (chatroom_message_t *)safe_malloc(sizeof(chatroom_message_t));
-
-    cm->sender = sender;
-    cm->general_msg = general_message;
-    cm->msg = new_string_from_cstr(msg);    // message will be copied entirely into heap memory.
-    
-    return cm;
-}
-
-static void delete_chatroom_message(chatroom_message_t *cm) {
-    delete_string(cm->msg);
-    safe_free(cm);
-}
-
-typedef struct _chatroom_mailbox_t {
-    pthread_mutex_t mb_mut;
-    // List<chatroom_message_t *>
-    list_t *mb;
-} chatroom_mailbox_t;
-
-static chatroom_mailbox_t *new_chatroom_mailbox(void) {
-    chatroom_mailbox_t *mb = (chatroom_mailbox_t *)safe_malloc(sizeof(chatroom_mailbox_t));
-
-    safe_pthread_mutex_init(&(mb->mb_mut), NULL);
-    mb->mb = new_list(LINKED_LIST_IMPL, sizeof(chatroom_message_t *));
-
-    return mb;
-}
-
-static void delete_chatroom_mailbox(chatroom_mailbox_t *mb) {
-    chatroom_message_t **iter;
-    l_reset_iterator(mb->mb);
-    while ((iter = l_next(mb->mb))) {
-        delete_chatroom_message(*iter);
-    }
-
-    delete_list(mb->mb);
-    safe_pthread_mutex_destroy(&(mb->mb_mut));
-    safe_free(mb);
-}
-
-typedef struct _chatroom_state_t {
-    // Basically, to allow for workers to actually do things in parallel,
-    // We promise that the structure of the id map and the structure of the mailboxes map
-    // will only ever change when the global write lock is held.
-    //
-    // If you just want to use a singular mailbox, or lookup a username, you just need the 
-    // global read lock. (Followed by the individual mailbox lock if applicable)
-    pthread_rwlock_t global_lock;
-
-    // ID's to Usernames. (THIS MAP OWNS THE USERNAMES!)
-    // Map<channel_id_t, string_t *>
-    hash_map_t *id_map; 
-
-    // Usernames to Mailboxes.  (THIS MAP OWNS THE MAILBOXES)
-    // Map<string_t *, chatroom_mailbox_t *>
-    hash_map_t *mailboxes;
-} chatroom_state_t;
 
 
-static chatroom_state_t *new_chatroom_state(void) {
-    chatroom_state_t *cs = (chatroom_state_t *)safe_malloc(sizeof(chatroom_state_t));
 
-    safe_pthread_rwlock_init(&(cs->global_lock), NULL);
-    cs->id_map = new_hash_map(sizeof(channel_id_t), sizeof(string_t *), 
-            chrpc_channel_id_hash_func, chrpc_channel_id_equals_func);
-    cs->mailboxes = new_hash_map(sizeof(string_t *), sizeof(chatroom_mailbox_t *),
-            (hash_map_hash_ft)s_indirect_hash, (hash_map_key_eq_ft)s_indirect_equals);
 
-    return cs;
-}
-
-static void  delete_chatroom_state(chatroom_state_t *cs) {
-    // This assumes no one else is using the chatroom state.
-    // All worker threads are done working.
-    safe_pthread_rwlock_destroy(&(cs->global_lock));
-
-    // We'll delete usernames when iterating over the mailbox map.
-    delete_hash_map(cs->id_map);
-    
-    key_val_pair_t kvp;
-
-    hm_reset_iterator(cs->mailboxes);
-    while ((kvp = hm_next_kvp(cs->mailboxes)) != HASH_MAP_EXHAUSTED) {
-        delete_string(*(string_t **)kvp_key(cs->mailboxes, kvp));
-        delete_chatroom_mailbox(*(chatroom_mailbox_t **)kvp_val(cs->mailboxes, kvp));
-    }
-
-    delete_hash_map(cs->mailboxes);
-    safe_free(cs);
-}
 
 static chrpc_value_t *new_chatroom_error(const char *msg) {
     return new_chrpc_struct_value_va(
