@@ -24,7 +24,7 @@ _CLIENT_SRCS := client.c
 CLIENT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(_CLIENT_SRCS))
 CLIENT_BIN := $(BUILD_DIR)/client
 
-_SERVER_SRCS := server.c
+_SERVER_SRCS := server.c chatroom.c
 SERVER_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(_SERVER_SRCS))
 SERVER_BIN := $(BUILD_DIR)/server
 
@@ -50,6 +50,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 clean.deep: clean
+	rm -f $(CLANGD)
 	rm -rf $(INSTALL_DIR)
 
 

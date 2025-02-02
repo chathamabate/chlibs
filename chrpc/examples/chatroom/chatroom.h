@@ -11,6 +11,8 @@
 #include "chutil/map.h"
 #include <pthread.h>
 
+#define CHATROOM_MAX_MESSAGE_LEN 0x100
+
 typedef uint8_t chatroom_status_t;
 
 #define CHATROOM_SUCCESS 0
@@ -18,6 +20,10 @@ typedef uint8_t chatroom_status_t;
 #define CHATROOM_USERNAME_TAKEN 2
 #define CHATROOM_INVALID_USERNAME 3
 #define CHATROOM_CHANNEL_NOT_REGISTERED 4
+#define CHATROOM_INVALID_MESSAGE_LEN 5
+#define CHATROOM_UNKNOWN_RECEIVER 6
+
+const char *chatroom_status_as_literal(chatroom_status_t status);
 
 typedef struct _chatroom_message_t {
     bool general_msg;    // false = private message.
@@ -55,8 +61,7 @@ typedef struct _chatroom_state_t {
     // global read lock. (Followed by the individual mailbox lock if applicable)
     pthread_rwlock_t global_lock;
 
-    // NOTE: both maps below will OWN all their parts.
-    // Strings are efficient to work with because they are smart pointers under the hood.
+    // NOTE: The string values in id_map are the same as the string keys in the mailbox map.
 
     // Map<channel_id_t, string_t *>
     hash_map_t *id_map; 
@@ -68,22 +73,18 @@ typedef struct _chatroom_state_t {
 chatroom_state_t *new_chatroom_state(void);
 void delete_chatroom_state(chatroom_state_t *cs);
 
-// returns NULL, or a new string.
-string_t *chatroom_lookup_username(chatroom_state_t *cs, channel_id_t id);
-
 chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const char *username);
+chatroom_status_t chatroom_logout(chatroom_state_t *cs, channel_id_t id);
 
-// This call consumes the given message, UNLESS there is an error returned.
+// string_t *'s are used where the string values will be efficiently copied.
+// Given string_t *'s are not consumed in any way.
+
 chatroom_status_t chatroom_send_global_msg_from_id(chatroom_state_t *cs, channel_id_t id, string_t *msg);
+chatroom_status_t chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *msg);
 
-// This call CONSUMES the given sender and message.
-// We can give sender as a string here since the sender might not actually be a person,
-// for example, the server giving an announcement.
-// For this reason, this call will always succeed.
-void chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *msg);
-
-// Given string_t *'s are CONSUMED on success, otherwise they're your responsibility.
-chatroom_status_t chatroom_send_private_msg_from_id(chatroom_state_t *cs, const char *receiver, channel_id_t sender, string_t *msg);
+chatroom_status_t chatroom_send_private_msg_from_id(chatroom_state_t *cs, const char *receiver, channel_id_t id, string_t *msg);
 chatroom_status_t chatroom_send_private_msg(chatroom_state_t *cs, const char *receiver, string_t *sender, string_t *msg);
+
+chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chrpc_value_t **out_buf, uint32_t out_buf_len, uint32_t *written);
 
 #endif

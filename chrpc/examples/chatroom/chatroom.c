@@ -8,6 +8,27 @@
 #include "chsys/wrappers.h"
 #include "chrpc/rpc_server.h"
 
+const char *chatroom_status_as_literal(chatroom_status_t status) {
+    switch (status) {
+        case CHATROOM_SUCCESS: 
+            return "Success";
+        case CHATROOM_CHANNEL_ALREADY_REGISTERED: 
+            return "Channel is already registered";
+        case CHATROOM_USERNAME_TAKEN: 
+            return "Username is taken";
+        case CHATROOM_INVALID_USERNAME: 
+            return "Given username is invalid";
+        case CHATROOM_CHANNEL_NOT_REGISTERED: 
+            return "Channel is not registered";
+        case CHATROOM_INVALID_MESSAGE_LEN: 
+            return "Invalid message length";
+        case CHATROOM_UNKNOWN_RECEIVER: 
+            return "Unknown receiver";
+        default:
+            return "Unknown status code";
+    }
+}
+
 chatroom_message_t *new_chatroom_message(string_t *sender, bool general_message, string_t *msg) {
     chatroom_message_t *cm = (chatroom_message_t *)safe_malloc(sizeof(chatroom_message_t));
 
@@ -95,12 +116,10 @@ void delete_chatroom_state(chatroom_state_t *cs) {
 
     key_val_pair_t kvp;
 
-    hm_reset_iterator(cs->id_map);
-    while ((kvp = hm_next_kvp(cs->id_map)) != HASH_MAP_EXHAUSTED) {
-        delete_string(*(string_t **)kvp_key(cs->id_map, kvp));
-    }
+    // Remeber, the values inside the ID map are the Keys of the mailbox map.
+    // Only delete these strings once.
+
     delete_hash_map(cs->id_map);
-    
 
     hm_reset_iterator(cs->mailboxes);
     while ((kvp = hm_next_kvp(cs->mailboxes)) != HASH_MAP_EXHAUSTED) {
@@ -110,21 +129,6 @@ void delete_chatroom_state(chatroom_state_t *cs) {
     delete_hash_map(cs->mailboxes);
 
     safe_free(cs);
-}
-
-string_t *chatroom_lookup_username(chatroom_state_t *cs, channel_id_t id) {
-    string_t *new_username = NULL;
-
-    safe_pthread_rwlock_rdlock(&(cs->global_lock));
-
-    string_t **_username = hm_get(cs->id_map, &id);
-    if (_username) {
-        new_username = s_copy(*_username);
-    }
-
-    safe_pthread_rwlock_unlock(&(cs->global_lock));
-
-    return new_username;
 }
 
 chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const char *username) {
@@ -164,32 +168,42 @@ chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const ch
     string_t *new_username_copy = s_copy(new_username);
     chatroom_mailbox_t *mb = new_chatroom_mailbox();
 
-    hm_put(cs->mailboxes, &new_username_copy, &mb);
+    hm_put(cs->mailboxes, &new_username, &mb);
     
     status = CHATROOM_SUCCESS;
 
 end:
     safe_pthread_rwlock_unlock(&(cs->global_lock));
-
     return status;
 }
 
-chatroom_status_t chatroom_send_global_msg_from_id(chatroom_state_t *cs, channel_id_t id, string_t *msg) {
-    string_t *username = chatroom_lookup_username(cs, id);
+chatroom_status_t chatroom_logout(chatroom_state_t *cs, channel_id_t id) {
+    chatroom_status_t status;
 
-    if (!username) {
-        return CHATROOM_CHANNEL_NOT_REGISTERED;
-    }
-
-    chatroom_send_global_msg(cs, username, msg);
-
-    return CHATROOM_SUCCESS;
-}
-
-void chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *msg) {
-    // Hash Map iterator is mutative, so we need the global write lock.
     safe_pthread_rwlock_wrlock(&(cs->global_lock));
 
+    string_t **_username = (string_t **)hm_get(cs->id_map, &id);
+    if (_username) {
+        string_t *username = *_username;
+        hm_remove(cs->id_map, &id);
+        
+        chatroom_mailbox_t *mb = *(chatroom_mailbox_t **)hm_get(cs->mailboxes, &username);
+        hm_remove(cs->mailboxes, &username);
+
+        delete_string(username);
+        delete_chatroom_mailbox(mb);
+
+        status = CHATROOM_SUCCESS;
+    } else {
+        status = CHATROOM_CHANNEL_NOT_REGISTERED;
+    }
+
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+    return status;
+}
+
+// Assumes global write lock is held.
+static void _chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *msg) {
     key_val_pair_t kvp;
     hm_reset_iterator(cs->mailboxes);
     while ((kvp = hm_next_kvp(cs->mailboxes)) != HASH_MAP_EXHAUSTED) {
@@ -200,17 +214,126 @@ void chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *
             s_copy(msg)
         ));
     }
+}
+
+chatroom_status_t chatroom_send_global_msg_from_id(chatroom_state_t *cs, channel_id_t id, string_t *msg) {
+    if (s_len(msg) == 0 || s_len(msg) > CHATROOM_MAX_MESSAGE_LEN) {
+        return CHATROOM_INVALID_MESSAGE_LEN;
+    }
+
+    chatroom_status_t status;
+
+    safe_pthread_rwlock_wrlock(&(cs->global_lock));
+
+    string_t **_sender = (string_t **)hm_get(cs->id_map, &id);
+
+    if (_sender) {
+        string_t *sender = *_sender;
+
+        _chatroom_send_global_msg(cs, sender, msg);
+
+        status = CHATROOM_SUCCESS;
+    } else {
+        status = CHATROOM_CHANNEL_NOT_REGISTERED;
+    }
 
     safe_pthread_rwlock_unlock(&(cs->global_lock));
 
-    delete_string(sender);
-    delete_string(msg);
+    return status;
 }
 
-chatroom_status_t chatroom_send_private_msg_from_id(chatroom_state_t *cs, const char *receiver, channel_id_t sender, string_t *msg) {
+chatroom_status_t chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *msg) {
+    if (s_len(msg) == 0 || s_len(msg) > CHATROOM_MAX_MESSAGE_LEN) {
+        return CHATROOM_INVALID_MESSAGE_LEN;
+    }
 
+    safe_pthread_rwlock_wrlock(&(cs->global_lock));
+    _chatroom_send_global_msg(cs, sender, msg);
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+
+    return CHATROOM_SUCCESS;
+}
+
+// Assumes global read lock is held!
+static chatroom_status_t _chatroom_send_private_msg(chatroom_state_t *cs, const char *receiver, string_t *sender, string_t *msg) {
+    string_t *receiver_str = new_string_from_literal(receiver);
+    chatroom_mailbox_t **_mb = (chatroom_mailbox_t **)hm_get(cs->mailboxes, &receiver_str);
+    delete_string(receiver_str);
+
+    if (!_mb) {
+        return CHATROOM_UNKNOWN_RECEIVER;
+    }
+
+    chatroom_mailbox_t *mb = *_mb;
+
+    chatroom_mailbox_push(mb, new_chatroom_message(
+        s_copy(sender),
+        false,
+        s_copy(msg)
+    ));
+
+    return CHATROOM_SUCCESS;
+}
+
+chatroom_status_t chatroom_send_private_msg_from_id(chatroom_state_t *cs, const char *receiver, channel_id_t id, string_t *msg) {
+    if (s_len(msg) == 0 || s_len(msg) > CHATROOM_MAX_MESSAGE_LEN) {
+        return CHATROOM_INVALID_MESSAGE_LEN;
+    }
+
+    chatroom_status_t status;
+      
+    safe_pthread_rwlock_rdlock(&(cs->global_lock));
+    string_t **_sender = (string_t **)hm_get(cs->id_map, &id);
+
+    if (_sender) {
+        string_t *sender = *_sender;
+        status = _chatroom_send_private_msg(cs, receiver, sender, msg);
+    } else {
+        status = CHATROOM_CHANNEL_NOT_REGISTERED;
+    }
+
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+
+    return status;
 }
 
 chatroom_status_t chatroom_send_private_msg(chatroom_state_t *cs, const char *receiver, string_t *sender, string_t *msg) {
+    if (s_len(msg) == 0 || s_len(msg) > CHATROOM_MAX_MESSAGE_LEN) {
+        return CHATROOM_INVALID_MESSAGE_LEN;
+    }
 
+    chatroom_status_t status;
+      
+    safe_pthread_rwlock_rdlock(&(cs->global_lock));
+    status = _chatroom_send_private_msg(cs, receiver, sender, msg);
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+
+    return status;
+}
+
+chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chrpc_value_t **out_buf, uint32_t out_buf_len, uint32_t *written) {
+    if (out_buf_len == 0) {
+        *written = 0;
+        return CHATROOM_SUCCESS;
+    }
+
+    chatroom_status_t status;
+      
+    safe_pthread_rwlock_rdlock(&(cs->global_lock));
+    string_t **_username = (string_t **)hm_get(cs->id_map, &id);
+
+    if (_username) {
+        string_t *username = *_username;
+        chatroom_mailbox_t *mb = *(chatroom_mailbox_t **)hm_get(cs->mailboxes, &username);
+
+        *written = chatroom_mailbox_poll(mb, out_buf, out_buf_len);
+        status = CHATROOM_SUCCESS;
+
+    } else {
+        status = CHATROOM_CHANNEL_NOT_REGISTERED;
+    }
+
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+
+    return status;
 }
