@@ -45,14 +45,6 @@ void delete_chatroom_message(chatroom_message_t *cm) {
     safe_free(cm);
 }
 
-chrpc_value_t *chatroom_message_as_chrpc_value(chatroom_message_t *msg) {
-    return new_chrpc_struct_value_va(
-        new_chrpc_b8_value(msg->general_msg),
-        new_chrpc_str_value(s_get_cstr(msg->sender)),
-        new_chrpc_str_value(s_get_cstr(msg->msg))
-    );
-}
-
 chatroom_mailbox_t *new_chatroom_mailbox(void) {
     chatroom_mailbox_t *mb = (chatroom_mailbox_t *)safe_malloc(sizeof(chatroom_mailbox_t));
 
@@ -80,7 +72,7 @@ void chatroom_mailbox_push(chatroom_mailbox_t *mb, chatroom_message_t *msg) {
     safe_pthread_mutex_unlock(&(mb->mb_mut));
 }
 
-uint32_t chatroom_mailbox_poll(chatroom_mailbox_t *mb, chrpc_value_t **out_buf, uint32_t out_buf_len) {
+uint32_t chatroom_mailbox_poll(chatroom_mailbox_t *mb, chatroom_message_t **out_buf, uint32_t out_buf_len) {
     safe_pthread_mutex_lock(&(mb->mb_mut));
 
     uint32_t mb_len = (uint32_t)l_len(mb->mb);
@@ -89,8 +81,7 @@ uint32_t chatroom_mailbox_poll(chatroom_mailbox_t *mb, chrpc_value_t **out_buf, 
     chatroom_message_t *msg;
     for (uint32_t i = 0; i < pop_amt; i++) {
         l_pop(mb->mb, &msg);
-        out_buf[i] = chatroom_message_as_chrpc_value(msg);
-        delete_chatroom_message(msg);
+        out_buf[i] = msg;
     }
 
     safe_pthread_mutex_unlock(&(mb->mb_mut));
@@ -165,9 +156,10 @@ chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const ch
         
     hm_put(cs->id_map, &id, &new_username);
 
-    string_t *new_username_copy = s_copy(new_username);
     chatroom_mailbox_t *mb = new_chatroom_mailbox();
 
+    // Slightly dangerous, we are using the same string pointer in both maps.
+    // This is to help with logout logic.
     hm_put(cs->mailboxes, &new_username, &mb);
     
     status = CHATROOM_SUCCESS;
@@ -311,7 +303,7 @@ chatroom_status_t chatroom_send_private_msg(chatroom_state_t *cs, const char *re
     return status;
 }
 
-chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chrpc_value_t **out_buf, uint32_t out_buf_len, uint32_t *written) {
+chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chatroom_message_t **out_buf, uint32_t out_buf_len, uint32_t *written) {
     if (out_buf_len == 0) {
         *written = 0;
         return CHATROOM_SUCCESS;

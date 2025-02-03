@@ -35,10 +35,6 @@ typedef struct _chatroom_message_t {
 chatroom_message_t *new_chatroom_message(string_t *sender, bool general_message, string_t *msg);
 void delete_chatroom_message(chatroom_message_t *cm);
 
-// This creates and returns a NEW chrpc value representing the given message.
-// The message still persists after this call.
-chrpc_value_t *chatroom_message_as_chrpc_value(chatroom_message_t *msg);
-
 typedef struct _chatroom_mailbox_t {
     pthread_mutex_t mb_mut;
     // List<chatroom_message_t *>
@@ -50,7 +46,7 @@ void delete_chatroom_mailbox(chatroom_mailbox_t *mb);
 
 // Assumes ownership of given message.
 void chatroom_mailbox_push(chatroom_mailbox_t *mb, chatroom_message_t *msg);
-uint32_t chatroom_mailbox_poll(chatroom_mailbox_t *mb, chrpc_value_t **out_buf, uint32_t out_buf_len);
+uint32_t chatroom_mailbox_poll(chatroom_mailbox_t *mb, chatroom_message_t **out_buf, uint32_t out_buf_len);
 
 typedef struct _chatroom_state_t {
     // Basically, to allow for workers to actually do things in parallel,
@@ -85,6 +81,6 @@ chatroom_status_t chatroom_send_global_msg(chatroom_state_t *cs, string_t *sende
 chatroom_status_t chatroom_send_private_msg_from_id(chatroom_state_t *cs, const char *receiver, channel_id_t id, string_t *msg);
 chatroom_status_t chatroom_send_private_msg(chatroom_state_t *cs, const char *receiver, string_t *sender, string_t *msg);
 
-chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chrpc_value_t **out_buf, uint32_t out_buf_len, uint32_t *written);
+chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chatroom_message_t **out_buf, uint32_t out_buf_len, uint32_t *written);
 
 #endif
