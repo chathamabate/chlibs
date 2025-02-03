@@ -194,6 +194,21 @@ chatroom_status_t chatroom_logout(chatroom_state_t *cs, channel_id_t id) {
     return status;
 }
 
+string_t *chatroom_get_username(chatroom_state_t *cs, channel_id_t id) {
+    string_t *username = NULL;
+
+    safe_pthread_rwlock_rdlock(&(cs->global_lock));
+
+    string_t **_username = (string_t **)hm_get(cs->id_map, &id);
+    if (_username) {
+        username = s_copy(*_username);
+    }
+
+    safe_pthread_rwlock_unlock(&(cs->global_lock));
+
+    return username;
+}
+
 // Assumes global write lock is held.
 static void _chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, string_t *msg) {
     key_val_pair_t kvp;

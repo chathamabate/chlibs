@@ -72,6 +72,12 @@ void delete_chatroom_state(chatroom_state_t *cs);
 chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const char *username);
 chatroom_status_t chatroom_logout(chatroom_state_t *cs, channel_id_t id);
 
+// Returns NULL if no username, otherwise returns a NEW string containing the username.
+//
+// NOTE: Be careful with this function, it is always possible the user logs out sometime
+// shortly after making this call. 
+string_t *chatroom_get_username(chatroom_state_t *cs, channel_id_t id);
+
 // string_t *'s are used where the string values will be efficiently copied.
 // Given string_t *'s are not consumed in any way.
 
