@@ -17,6 +17,14 @@
 // A message will be printed, but not in a pretty way!
 void sys_init(void);
 
+bool sys_sig_exit_requested(void);
+
+// If set to true, the process as a whole will exit when certain signals are received.
+// If given, the sig exit routine will be called.
+//
+// If set to false, sig_exit_requested will return true... the signal handling thread will exit.
+void sys_set_sig_exit(bool e);
+
 // Remeber, when a signal is received that triggers a safe exit, it is not handled
 // by a signal handler, but rather an independent thread.
 //

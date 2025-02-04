@@ -16,7 +16,7 @@ int client_connect(const char *ipaddr, int port) {
     // 1. Create a socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        return sockfd;
+        return -1;
     }
 
      // 2. Set up the server address
@@ -54,8 +54,16 @@ int create_server(int port, int pending_conns) {
         return -1;
     }
 
-    status = fcntl(sockfd, F_SETFL, O_NONBLOCK);
-    if (status) {
+    int flags;
+
+    flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1) {
+        close(sockfd);
+        return -1;
+    }
+
+    status = fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    if (status == -1) {
         close(sockfd);
         return -1;
     }

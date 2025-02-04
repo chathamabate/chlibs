@@ -11,6 +11,8 @@
 #include "chutil/map.h"
 #include <pthread.h>
 
+#define CHATROOM_PORT 5656
+
 #define CHATROOM_MAX_MESSAGE_LEN 0x100
 
 typedef uint8_t chatroom_status_t;
