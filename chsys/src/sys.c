@@ -29,6 +29,9 @@ typedef struct _child_node_t {
 typedef struct _sys_state_t {
     bool quiet;
 
+    void *signal_exit_routine_arg;
+    void (*signal_exit_routine)(void *);
+
     // NOTE: this counter will keep track of user mallocs only.
     // All mallocs within this file are not counted!
     size_t malloc_count;
@@ -55,10 +58,19 @@ static void *sig_thread(void *arg) {
         log_fatal_p(true, "Error from sigwait. (%d)", s);
     }
 
-    sys_lock_p(true);
-    log_info_p(false, "SIGINT received");
-    safe_exit_p(false, 0);
-    sys_unlock_p(true);
+    log_info("SIGINT received");
+
+    sys_lock();
+    void *exit_rout_arg = ss->signal_exit_routine_arg;
+    void (*exit_rout)(void *) = ss->signal_exit_routine;
+    sys_unlock();
+
+    if (exit_rout) {
+        log_info("Performing SIGINT exit routine");
+        exit_rout(exit_rout_arg);
+    }
+
+    safe_exit(0);
 
     // Will never make it here.
     return NULL;
@@ -91,6 +103,8 @@ void sys_init(void) {
     }
 
     ss->quiet = 0;
+    ss->signal_exit_routine_arg = NULL;
+    ss->signal_exit_routine = NULL;
     ss->malloc_count = 0;
     ss->child_list = NULL;
 
@@ -112,6 +126,13 @@ void sys_init(void) {
     // Spawn our signal handling thread. 
     // (THIS SHOULD ALWAYS BE THE LAST ACTION OF THIS FUNCITON)
     spawn_sig_thread_p(true);
+}
+
+void sys_sig_exit_routine(void (*routine)(void *), void *arg) {
+    sys_lock();
+    ss->signal_exit_routine = routine;
+    ss->signal_exit_routine_arg = arg;
+    sys_unlock();
 }
 
 void sys_lock_p(bool acquire_lock) {

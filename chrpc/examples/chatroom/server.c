@@ -3,12 +3,16 @@
 
 #include "chatroom.h"
 
+#include "chrpc/channel.h"
+#include "chrpc/channel_fd.h"
 #include "chrpc/rpc_server.h"
+#include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
 #include "chsys/sys.h"
 #include "chsys/wrappers.h"
 #include "chsys/mem.h"
 #include "chsys/log.h"
+#include "chsys/sock.h"
 
 #include "chutil/map.h"
 #include "chutil/string.h"
@@ -18,6 +22,10 @@
 #include <stdbool.h>
 #include <pthread.h>
 #include <string.h>
+#include <sys/errno.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 static chrpc_value_t *new_chatroom_server_success(void) {
     return new_chrpc_struct_value_va(
@@ -168,6 +176,25 @@ static void chatroom_on_disconnect(channel_id_t id, chatroom_state_t *cs) {
     }
 }
 
+typedef struct _chatroom_server_exit_arg_t {
+    pthread_mutex_t mut;
+    bool should_exit;
+} chatroom_server_exit_arg_t;
+
+// This is a somewhat unique strategy, we will pass this to the signal listener.
+// The when called, this just notifies the main thread that it is time to exit!
+static void chatroom_server_exit_notifier(void *arg) {
+    chatroom_server_exit_arg_t *e_arg = (chatroom_server_exit_arg_t *)arg;
+
+    safe_pthread_mutex_lock(&(e_arg->mut));
+    e_arg->should_exit = true;
+    safe_pthread_mutex_unlock(&(e_arg->mut));
+
+    while (true) {
+        sleep(1);
+    }
+}
+
 void run_chat_server(void) {
     chatroom_state_t *cs = new_chatroom_state();
 
@@ -239,6 +266,68 @@ void run_chat_server(void) {
         log_fatal("Failed to create server");
     }
 
+    int server_fd = create_server(5656, 5);
+    if (server_fd < 0) {
+        log_fatal("Failed to create server socket");
+    }
+
+    chatroom_server_exit_arg_t e_arg;
+    safe_pthread_mutex_init(&(e_arg.mut), NULL);
+    e_arg.should_exit = false;
+
+    // Remeber, this won't actually exit.
+    // It's on us to poll the exit arg.
+    sys_sig_exit_routine(chatroom_server_exit_notifier, &e_arg);
+
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    channel_status_t chn_status;
+
+    while (true) {
+        safe_pthread_mutex_lock(&(e_arg.mut));
+        bool should_exit = e_arg.should_exit;
+        safe_pthread_mutex_unlock(&(e_arg.mut));
+
+        if (should_exit) {
+            break;
+        }
+
+        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+
+        if (client_fd < 0 && client_fd != EWOULDBLOCK && client_fd != EAGAIN) {
+            log_fatal("Unknown error accepting client"); 
+        }
+
+        if (client_fd > 0) {
+            channel_fd_config_t client_cfg = {
+                .queue_depth = 5,
+                .write_fd = client_fd,
+                .read_fd = client_fd,
+                .write_over = false, 
+                .max_msg_size = 0x1000,
+                .read_chunk_size = 0x1000
+            };
+
+            channel_t *client_chn;
+            chn_status = new_channel(CHANNEL_FD_IMPL, &client_chn, &client_cfg);
+
+            if (chn_status != CHN_SUCCESS) {
+                log_fatal("Failure to create client channel from socket fd");
+            } 
+
+            status = chrpc_server_give_channel(server, client_chn);
+
+            if (status != CHRPC_SUCCESS) {
+                log_fatal("Failure to give client to server");
+            }
+        }
+
+        sleep(1);
+    }
+
+    log_info("Shutting down chatroom");
+    
+    close(server_fd);
     delete_chrpc_server(server);
     delete_chatroom_state(cs);
 }
