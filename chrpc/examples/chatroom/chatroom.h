@@ -29,12 +29,12 @@ const char *chatroom_status_as_literal(chatroom_status_t status);
 
 typedef struct _chatroom_message_t {
     bool general_msg;    // false = private message.
-    string_t *sender;
+    string_t *user;      // Could be sender or receiver...
     string_t *msg;
 } chatroom_message_t;
 
 // This assumes ownership of both given strings.
-chatroom_message_t *new_chatroom_message(string_t *sender, bool general_message, string_t *msg);
+chatroom_message_t *new_chatroom_message(bool general_message, string_t *user, string_t *msg);
 void delete_chatroom_message(chatroom_message_t *cm);
 
 typedef struct _chatroom_mailbox_t {

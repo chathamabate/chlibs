@@ -29,18 +29,18 @@ const char *chatroom_status_as_literal(chatroom_status_t status) {
     }
 }
 
-chatroom_message_t *new_chatroom_message(string_t *sender, bool general_message, string_t *msg) {
+chatroom_message_t *new_chatroom_message(bool general_message, string_t *user, string_t *msg) {
     chatroom_message_t *cm = (chatroom_message_t *)safe_malloc(sizeof(chatroom_message_t));
 
     cm->general_msg = general_message;
-    cm->sender = sender;
+    cm->user = user;
     cm->msg = msg;
     
     return cm;
 }
 
 void delete_chatroom_message(chatroom_message_t *cm) {
-    delete_string(cm->sender);
+    delete_string(cm->user);
     delete_string(cm->msg);
     safe_free(cm);
 }
@@ -216,8 +216,8 @@ static void _chatroom_send_global_msg(chatroom_state_t *cs, string_t *sender, st
     while ((kvp = hm_next_kvp(cs->mailboxes)) != HASH_MAP_EXHAUSTED) {
         chatroom_mailbox_t *mb = *(chatroom_mailbox_t **)kvp_val(cs->mailboxes, kvp);
         chatroom_mailbox_push(mb, new_chatroom_message(
-            s_copy(sender),
             true,
+            s_copy(sender),
             s_copy(msg)
         ));
     }

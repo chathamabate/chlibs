@@ -130,7 +130,7 @@ static chrpc_server_command_t chatroom_poll_ep(channel_id_t id, chatroom_state_t
 
             rpc_msg_buf[i] = new_chrpc_struct_value_va(
                 new_chrpc_b8_value(msg->general_msg),
-                new_chrpc_str_value(s_get_cstr(msg->sender)),
+                new_chrpc_str_value(s_get_cstr(msg->user)),
                 new_chrpc_str_value(s_get_cstr(msg->msg))
             );
 

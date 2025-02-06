@@ -20,7 +20,7 @@ INCLUDES := \
 			$(CHATROOM_DIR) \
 			$(INSTALL_DIR)/include
 	
-_CLIENT_SRCS := client.c
+_CLIENT_SRCS := client.c chatroom.c
 CLIENT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(_CLIENT_SRCS))
 CLIENT_BIN := $(BUILD_DIR)/client
 
