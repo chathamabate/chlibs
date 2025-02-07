@@ -212,6 +212,10 @@ static void client_process_cmd_buffer(chatroom_mailbox_t *send_q, char *buf) {
     buf[0] = '\0';
 }
 
+#define ANSI_RESET_LINE "\033[2K\r"
+#define CLIENT_PROMPT ANSI_BOLD ">" ANSI_RESET
+#define CLIENT_PRINT_PROMPT() printf(ANSI_RESET_LINE CLIENT_PROMPT)
+
 static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailbox_t *recv_q) {
     enable_raw_mode();
     set_stdin_non_blocking();
@@ -226,10 +230,11 @@ static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailb
     while (!sys_sig_exit_requested()) {
         chatroom_message_t *recv_msg;
         if (chatroom_mailbox_poll(recv_q, &recv_msg, 1) != 0) {
-            printf("\033[2K\r%s\n", s_get_cstr(recv_msg->msg));
+            printf(ANSI_RESET_LINE);
+            printf(ANSI_RESET_LINE "%s\n", s_get_cstr(recv_msg->msg));
             delete_chatroom_message(recv_msg);
 
-            printf(">%s", cmd_buf);
+            CLIENT_PRINT_PROMPT();
             fflush(stdout);
         }
 
@@ -239,8 +244,18 @@ static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailb
             if (c == '\n') {
                 client_process_cmd_buffer(send_q, cmd_buf);
                 cmd_buf_i = 0;
-                printf("\033[2K\r>");
-            } else if (cmd_buf_i < cmd_buf_len - 1) {
+                CLIENT_PRINT_PROMPT();
+            } else if (c == 127) { // A deletion.
+                cmd_buf[cmd_buf_i] = '\0';
+
+                if (cmd_buf_i > 0) {
+                    cmd_buf_i--;
+                }
+
+                // Consider switching this to a more efficient terminal command.
+                CLIENT_PRINT_PROMPT();
+                printf("%s", cmd_buf);
+            }else if (cmd_buf_i < cmd_buf_len - 1) {
                 cmd_buf[cmd_buf_i++] = c;
                 cmd_buf[cmd_buf_i] = '\0';
                 putc(c, stdout); 

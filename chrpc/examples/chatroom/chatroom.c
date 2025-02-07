@@ -1,6 +1,7 @@
 
 #include "chatroom.h"
 #include "chrpc/serial_value.h"
+#include "chsys/log.h"
 #include "chsys/mem.h"
 #include "chutil/list.h"
 #include "chutil/map.h"
@@ -136,9 +137,9 @@ chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const ch
     for (size_t i = 0; i < username_len; i++) {
         char c = username[i];
 
-        bool lc = 'a' < c && c < 'z';
-        bool uc = 'A' < c && c < 'Z';
-        bool num = '0' < c && c < '9';
+        bool lc = 'a' <= c && c <= 'z';
+        bool uc = 'A' <= c && c <= 'Z';
+        bool num = '0' <= c && c <= '9';
         
         if (!(lc || uc || num)) {
             return CHATROOM_INVALID_USERNAME;
