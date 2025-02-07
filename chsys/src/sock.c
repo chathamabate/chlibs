@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <netinet/in.h>
+#include <sys/fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 
@@ -15,7 +16,7 @@ int client_connect(const char *ipaddr, int port) {
     // 1. Create a socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        return sockfd;
+        return -1;
     }
 
      // 2. Set up the server address
@@ -50,7 +51,21 @@ int create_server(int port, int pending_conns) {
     // 1. Create a socket
     sockfd = socket(AF_INET, SOCK_STREAM, 0);
     if (sockfd < 0) {
-        return sockfd;
+        return -1;
+    }
+
+    int flags;
+
+    flags = fcntl(sockfd, F_GETFL, 0);
+    if (flags == -1) {
+        close(sockfd);
+        return -1;
+    }
+
+    status = fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+    if (status == -1) {
+        close(sockfd);
+        return -1;
     }
 
     // 2. Bind the socket to an address and port
@@ -61,16 +76,16 @@ int create_server(int port, int pending_conns) {
 
     status = bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr));
 
-    if (status < 0) {
+    if (status) {
         close(sockfd);
-        return status;
+        return -1;
     }
 
     // 3. Listen for incoming connections
     status = listen(sockfd, pending_conns);
-    if (status < 0) { 
+    if (status) { 
         close(sockfd);
-        return status;
+        return -1;
     } 
 
     return sockfd;

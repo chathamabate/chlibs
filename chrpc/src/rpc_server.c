@@ -12,10 +12,13 @@
 #include "chutil/map.h"
 #include "chutil/queue.h"
 #include "chutil/string.h"
+#include "chsys/log.h"
 #include <pthread.h>
+#include <stdint.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
 
 chrpc_endpoint_t *new_chrpc_endpoint(const char *n, chrpc_endpoint_ft f, chrpc_type_t *rt, chrpc_type_t **args, uint32_t num_args) {
@@ -215,16 +218,20 @@ static inline bool chrpc_type_equals_wrapper(const chrpc_type_t *ct, const chrpc
 
 // This will craft and send a response to the given endpoint using the given buffer.
 // This assumes the args array is already populated with arguments of the expected types.
-static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_value_t **args, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_value_t **args, chrpc_queue_ele_t *ele, chrpc_server_t *server, uint8_t *buf) {
     chrpc_server_command_t cmd;
+    channel_t *chn = ele->chn;
 
     chrpc_value_t *ret_val = NULL;
-    cmd = ep->func(server->server_state, &ret_val, args, ep->num_args);
+    cmd = ep->func(ele->id, server->server_state, &ret_val, args, ep->num_args);
 
     if (!chrpc_type_equals_wrapper(ep->ret, ret_val)) {
         if (ret_val) {
             delete_chrpc_value(ret_val);
-        }
+        }         
+
+        log_warn("%s returned a value of the incorrect type");
+
         return CHRPC_SERVER_INTERNAL_ERROR;
     }
 
@@ -241,7 +248,7 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     size_t written;
     chrpc_status_t status;
 
-    status = chrpc_type_to_buffer(server->resp_type, buf + total_written, server->attrs.max_msg_size, &written);
+    status = chrpc_type_to_buffer(server->resp_type, buf + total_written, mms - total_written, &written);
     total_written += written;
 
     // Write status flag.
@@ -295,7 +302,9 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     return CHRPC_SUCCESS;
 }
 
-static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, chrpc_queue_ele_t *ele, chrpc_server_t *server, uint8_t *buf) {
+    channel_t *chn = ele->chn;
+
     // Valid Chrpc Value found, is it the correct type tho?
     if (!chrpc_type_equals(server->req_type, req->type)) {
         return chrpc_send_error_response(chn, server, buf, CHRPC_BAD_REQUEST);
@@ -354,7 +363,7 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
     } else {
         // Otherwise, things went well! Let's attempt to actually use our endpoint.
 
-        status = chrpc_send_response(ep, given_args, chn, server, buf);
+        status = chrpc_send_response(ep, given_args, ele, server, buf);
     }
 
     // Regardless of what happened, let's clean up our arguments.
@@ -369,9 +378,11 @@ static chrpc_status_t chrpc_handle_request(chrpc_value_t *req, channel_t *chn, c
 
 
 // In buf will have size server->attrs.max_msg_size.
-static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server, uint8_t *buf) {
+static chrpc_status_t chrpc_poll_channel(chrpc_queue_ele_t *ele, chrpc_server_t *server, uint8_t *buf) {
     chrpc_status_t rpc_status;
     channel_status_t chn_status;
+
+    channel_t *chn = ele->chn;
 
     if (chn_refresh(chn) != CHN_SUCCESS) {
         return CHRPC_CLIENT_CHANNEL_ERROR;
@@ -400,7 +411,7 @@ static chrpc_status_t chrpc_poll_channel(channel_t *chn, chrpc_server_t *server,
         return chrpc_send_error_response(chn, server, buf, rpc_status);
     }
 
-    rpc_status = chrpc_handle_request(req, chn, server, buf);
+    rpc_status = chrpc_handle_request(req, ele, server, buf);
 
     delete_chrpc_value(req);
 
@@ -429,11 +440,11 @@ static void *chrpc_server_worker_routine(void *arg) {
 
         // Otherwise, let's do actual work.
         
-        channel_t *chn;
+        chrpc_queue_ele_t ele;
         int e;
 
         safe_pthread_mutex_lock(&(server->q_mut));
-        e = q_poll(server->channels_q, &chn);
+        e = q_poll(server->q, &ele);
         safe_pthread_mutex_unlock(&(server->q_mut));
 
         if (e) {
@@ -450,36 +461,49 @@ static void *chrpc_server_worker_routine(void *arg) {
         //
         // If an error occurs while working with the channel, but an error code is successfully
         // sent back to the client, this field will be SUCCESS.
-        chrpc_status_t status = chrpc_poll_channel(chn, server, buf);
+        chrpc_status_t status = chrpc_poll_channel(&ele, server, buf);
 
-        // Basically any bubbled up code that is not a success or a no-op indicator
-        // will trigger a forced disconnect of the channel.
-        // 
-        // This is not always in the case of an error.
-        // For example, the user can return CHRPC_SC_DISCONNECT from their routine.
-        // This will cause CHRPC_DISCONNECT to be returned as a status.
-        if (status != CHRPC_SUCCESS && status != CHRPC_CLIENT_CHANNEL_EMTPY) {
-            // Fatal Error Case!
-            delete_channel(chn);
+        // Whether or not we should disconnect the channel at the end.
+        bool disconnect = false;
+
+        // Whether or not the worker should wait a bit before looking for more work.
+        bool pause = false;
+
+        time_t now = time(NULL);
+        
+        if (status == CHRPC_CLIENT_CHANNEL_EMTPY) {
+            if (server->attrs.idle_timeout > 0 && 
+                    (now - ele.since_last_req) > server->attrs.idle_timeout) {
+                disconnect = true;
+            } 
+
+            pause = true;
+        } else if (status == CHRPC_SUCCESS) {
+            ele.since_last_req = now;
+        } else {
+            // An error or requested disconnect. (No pause in this case)
+            disconnect = true; 
+        }
+
+        if (disconnect) {
+            delete_channel(ele.chn);
 
             safe_pthread_mutex_lock(&(server->q_mut));
             server->num_channels--;
             safe_pthread_mutex_unlock(&(server->q_mut));
 
-            continue;
-        } 
-
-        // SUCCESS or NO INCOMING MESSAGE.
-            
-        if (status == CHRPC_CLIENT_CHANNEL_EMTPY) {
-            // If no work was done, sleep a lil'
-            usleep(server->attrs.worker_usleep_amt);
+            if (server->attrs.on_disconnect) {
+                server->attrs.on_disconnect(ele.id, server->server_state);
+            }
+        } else {
+            safe_pthread_mutex_lock(&(server->q_mut));
+            q_push(server->q, &ele);
+            safe_pthread_mutex_unlock(&(server->q_mut));
         }
 
-        // Give channel back to the channel queue.
-        safe_pthread_mutex_lock(&(server->q_mut));
-        q_push(server->channels_q, &chn);
-        safe_pthread_mutex_unlock(&(server->q_mut));
+        if (pause) {
+            usleep(server->attrs.worker_usleep_amt);
+        }
     }
 
     // Should never make it here.
@@ -502,8 +526,9 @@ chrpc_status_t new_chrpc_server(chrpc_server_t **server, void *ss, const chrpc_s
     s->attrs = *attrs;
 
     safe_pthread_mutex_init(&(s->q_mut), NULL);
+    s->id_counter = 0;
     s->num_channels = 0;
-    s->channels_q = new_queue(s->attrs.max_connections, sizeof(channel_t *));
+    s->q = new_queue(s->attrs.max_connections, sizeof(chrpc_queue_ele_t));
 
     s->worker_ids = (pthread_t *)safe_malloc(sizeof(pthread_t) * s->attrs.num_workers);
     safe_pthread_mutex_init(&(s->should_exit_mut), NULL);
@@ -551,12 +576,12 @@ void delete_chrpc_server(chrpc_server_t *server) {
 
     // Cleanup channel queue.
 
-    channel_t *chan; 
-    while (q_poll(server->channels_q, &chan) == 0) {
-        delete_channel(chan);
+    chrpc_queue_ele_t ele;
+    while (q_poll(server->q, &ele) == 0) {
+        delete_channel(ele.chn);
     }
 
-    delete_queue(server->channels_q);
+    delete_queue(server->q);
     safe_pthread_mutex_destroy(&(server->q_mut));
 
     // Finally, delete endpoint set.
@@ -583,14 +608,27 @@ chrpc_status_t chrpc_server_give_channel(chrpc_server_t *server, channel_t *chn)
 
     safe_pthread_mutex_lock(&(server->q_mut));
 
-    if (server->num_channels == q_cap(server->channels_q)) {
+    if (server->num_channels == q_cap(server->q)) {
         ret_val = CHRPC_SERVER_FULL;
-    } else {
-        q_push(server->channels_q, &chn);
-        server->num_channels++; 
-        ret_val = CHRPC_SUCCESS;
+        goto end;
+    } 
+
+    if (server->id_counter == UINT64_MAX) {
+        ret_val = CHRPC_SERVER_FULL;
+        goto end;
     }
 
+    chrpc_queue_ele_t ele = {
+        .chn = chn,
+        .id = server->id_counter++,
+        .since_last_req = time(NULL)
+    };
+
+    q_push(server->q, &ele);
+    server->num_channels++; 
+    ret_val = CHRPC_SUCCESS;
+
+end:
     safe_pthread_mutex_unlock(&(server->q_mut));
 
     return ret_val;

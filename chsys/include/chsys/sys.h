@@ -17,6 +17,24 @@
 // A message will be printed, but not in a pretty way!
 void sys_init(void);
 
+bool sys_sig_exit_requested(void);
+
+// If set to true, the process as a whole will exit when certain signals are received.
+// If given, the sig exit routine will be called.
+//
+// If set to false, sig_exit_requested will return true... the signal handling thread will exit.
+void sys_set_sig_exit(bool e);
+
+// Remeber, when a signal is received that triggers a safe exit, it is not handled
+// by a signal handler, but rather an independent thread.
+//
+// If you'd like the thread to run some action before exiting, use this function
+// to specify the action.
+//
+// NOTE: Very important, to make life easier, the routine is NOT
+// executed while holding the system lock.
+void sys_sig_exit_routine(void (*routine)(void *), void *arg);
+
 // The system state contains a lock.
 // You can aquire/release said lock using these calls!
 // If given acquire lock is false, these two below functions are no-ops.

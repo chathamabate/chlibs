@@ -40,3 +40,33 @@ void safe_pthread_mutex_unlock(pthread_mutex_t *m) {
         log_fatal("Failed to unlock on mutex");
     }
 }
+
+void safe_pthread_rwlock_init(pthread_rwlock_t *rwl, const pthread_rwlockattr_t *attr) {
+    if (pthread_rwlock_init(rwl, attr)) {
+        log_fatal("Failed to init rwlock");
+    }
+}
+
+void safe_pthread_rwlock_rdlock(pthread_rwlock_t *rwl) {
+    if (pthread_rwlock_rdlock(rwl)) {
+        log_fatal("Failed to acquire read lock");
+    }
+}
+
+void safe_pthread_rwlock_wrlock(pthread_rwlock_t *rwl) {
+    if (pthread_rwlock_wrlock(rwl)) {
+        log_fatal("Failed to acquire write lock");
+    }
+}
+
+void safe_pthread_rwlock_unlock(pthread_rwlock_t *rwl) {
+    if (pthread_rwlock_unlock(rwl)) {
+        log_fatal("Failed to unlock rwlock");
+    }
+}
+
+void safe_pthread_rwlock_destroy(pthread_rwlock_t *rwl) {
+    if (pthread_rwlock_destroy(rwl)) {
+        log_fatal("Failed to acquire write lock");
+    }
+}

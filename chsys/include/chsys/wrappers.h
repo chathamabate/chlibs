@@ -22,4 +22,10 @@ void safe_pthread_mutex_destroy(pthread_mutex_t *m);
 void safe_pthread_mutex_lock(pthread_mutex_t *m);
 void safe_pthread_mutex_unlock(pthread_mutex_t *m);
 
+void safe_pthread_rwlock_init(pthread_rwlock_t *rwl, const pthread_rwlockattr_t *attr);
+void safe_pthread_rwlock_rdlock(pthread_rwlock_t *rwl);
+void safe_pthread_rwlock_wrlock(pthread_rwlock_t *rwl);
+void safe_pthread_rwlock_unlock(pthread_rwlock_t *rwl);
+void safe_pthread_rwlock_destroy(pthread_rwlock_t *rwl);
+
 #endif

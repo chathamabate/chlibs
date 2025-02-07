@@ -326,7 +326,7 @@ channel_status_t chn_fd_refresh(channel_fd_t *chn_fd) {
             // Error, just close up our boy here..
             close(chn_fd->read_fd);
             chn_fd->read_fd = -1;    
-        }
+        } 
 
         // We don't do anything with a wouldblock/again error.
         goto end;

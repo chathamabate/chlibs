@@ -28,6 +28,12 @@ typedef struct _child_node_t {
 
 typedef struct _sys_state_t {
     bool quiet;
+    
+    bool signal_exit_flag;
+    bool signal_exit_requested;
+
+    void *signal_exit_routine_arg;
+    void (*signal_exit_routine)(void *);
 
     // NOTE: this counter will keep track of user mallocs only.
     // All mallocs within this file are not counted!
@@ -55,10 +61,29 @@ static void *sig_thread(void *arg) {
         log_fatal_p(true, "Error from sigwait. (%d)", s);
     }
 
-    sys_lock_p(true);
-    log_info_p(false, "SIGINT received");
-    safe_exit_p(false, 0);
-    sys_unlock_p(true);
+    log_info("Exit signal received");
+
+    sys_lock();
+
+    bool signal_exit_flag = ss->signal_exit_flag;
+    ss->signal_exit_requested = true;
+
+    void *exit_rout_arg = ss->signal_exit_routine_arg;
+    void (*exit_rout)(void *) = ss->signal_exit_routine;
+
+    sys_unlock();
+
+    if (!signal_exit_flag) {
+        log_info("Signal handler thread exiting");
+        return NULL;
+    }
+
+    if (exit_rout) {
+        log_info("Performing signal exit routine");
+        exit_rout(exit_rout_arg);
+    }
+
+    safe_exit(0);
 
     // Will never make it here.
     return NULL;
@@ -91,6 +116,10 @@ void sys_init(void) {
     }
 
     ss->quiet = 0;
+    ss->signal_exit_flag = true;
+    ss->signal_exit_requested = false;
+    ss->signal_exit_routine_arg = NULL;
+    ss->signal_exit_routine = NULL;
     ss->malloc_count = 0;
     ss->child_list = NULL;
 
@@ -112,6 +141,29 @@ void sys_init(void) {
     // Spawn our signal handling thread. 
     // (THIS SHOULD ALWAYS BE THE LAST ACTION OF THIS FUNCITON)
     spawn_sig_thread_p(true);
+}
+
+bool sys_sig_exit_requested(void) {
+    bool sig_exit_requested;
+
+    sys_lock();
+    sig_exit_requested = ss->signal_exit_requested;
+    sys_unlock();
+
+    return sig_exit_requested;
+}
+
+void sys_set_sig_exit(bool e) {
+    sys_lock();
+    ss->signal_exit_flag = e;
+    sys_unlock();
+}
+
+void sys_sig_exit_routine(void (*routine)(void *), void *arg) {
+    sys_lock();
+    ss->signal_exit_routine = routine;
+    ss->signal_exit_routine_arg = arg;
+    sys_unlock();
 }
 
 void sys_lock_p(bool acquire_lock) {
