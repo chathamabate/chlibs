@@ -230,6 +230,8 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
             delete_chrpc_value(ret_val);
         }         
 
+        log_warn("%s returned a value of the incorrect type");
+
         return CHRPC_SERVER_INTERNAL_ERROR;
     }
 
