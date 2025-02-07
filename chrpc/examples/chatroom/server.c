@@ -8,6 +8,7 @@
 #include "chrpc/rpc_server.h"
 #include "chrpc/serial_type.h"
 #include "chrpc/serial_value.h"
+#include "chrpc/serial_helpers.h"
 #include "chsys/sys.h"
 #include "chsys/wrappers.h"
 #include "chsys/mem.h"
@@ -122,7 +123,7 @@ static chrpc_server_command_t chatroom_poll_ep(channel_id_t id, chatroom_state_t
     uint32_t written;
     chatroom_status_t status = chatroom_poll(cs, id, msg_buf, poll_size, &written);
 
-    if (status == CHATROOM_SUCCESS) {
+    if (status == CHATROOM_SUCCESS && written > 0) {
         chrpc_value_t **rpc_msg_buf = (chrpc_value_t **)safe_malloc(sizeof(chrpc_value_t *) * written);
         
         for (uint32_t i = 0; i < written; i++) {
@@ -159,7 +160,7 @@ static void chatroom_on_disconnect(channel_id_t id, chatroom_state_t *cs) {
 
     if (username) {
         if (status == CHATROOM_SUCCESS) {
-            log_info("Channel %" PRIu64 " logged out from %s", id, username);
+            log_info("Channel %" PRIu64 " logged out from %s", id, s_get_cstr(username));
 
             string_t *root_sender = new_string_from_literal("$ROOT");
 
@@ -186,7 +187,7 @@ void run_chat_server(void) {
         .max_connections = 20,
         .num_workers = 4,
         .worker_usleep_amt = 1000, // 1ms
-        .idle_timeout = 5,
+        .idle_timeout = 10,
         .on_disconnect = (chrpc_server_disconnect_ft)chatroom_on_disconnect
     };
 

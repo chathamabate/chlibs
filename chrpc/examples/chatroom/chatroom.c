@@ -321,6 +321,7 @@ chatroom_status_t chatroom_send_private_msg(chatroom_state_t *cs, const char *re
 chatroom_status_t chatroom_poll(chatroom_state_t *cs, channel_id_t id, chatroom_message_t **out_buf, uint32_t out_buf_len, uint32_t *written) {
     if (out_buf_len == 0) {
         *written = 0;
+        
         return CHATROOM_SUCCESS;
     }
 

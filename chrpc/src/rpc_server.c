@@ -228,7 +228,8 @@ static chrpc_status_t chrpc_send_response(const chrpc_endpoint_t *ep, chrpc_valu
     if (!chrpc_type_equals_wrapper(ep->ret, ret_val)) {
         if (ret_val) {
             delete_chrpc_value(ret_val);
-        }
+        }         
+
         return CHRPC_SERVER_INTERNAL_ERROR;
     }
 
@@ -478,7 +479,7 @@ static void *chrpc_server_worker_routine(void *arg) {
         } else if (status == CHRPC_SUCCESS) {
             ele.since_last_req = now;
         } else {
-            // An error or requested disconnect. (No pause in this case
+            // An error or requested disconnect. (No pause in this case)
             disconnect = true; 
         }
 

@@ -141,30 +141,58 @@ static void *client_worker_routine(void *arg) {
     }
 }
 
-
-int main(void) {
-    /*
+static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailbox_t *recv_q) {
     enable_raw_mode();
-    while (1) {
-        char c;
-        ssize_t r = read(STDIN_FILENO, &c, sizeof(char));
+    
+    char cmd_buf[0x100] = "";
+    const size_t cmd_buf_len = sizeof(cmd_buf);
 
-        if (r == 1) {
-            printf("%c\n", c);
-            if (c == '\n') {
-                disable_raw_mode();
-                return 0;
-            }
+    printf("\n>");
+    fflush(stdout);
+
+    while (!sys_sig_exit_requested()) {
+        chatroom_message_t *recv_msg;
+        if (chatroom_mailbox_poll(recv_q, &recv_msg, 1) != 0) {
+            printf("\r%s\n", s_get_cstr(recv_msg->msg));
+            delete_chatroom_message(recv_msg);
+
+            printf(">%s", cmd_buf);
+            fflush(stdout);
         }
 
-        sleep(1);
-    }
-    */
+        char c;
+        // This is blocking!!!!
+        // PLEASE MAKE THIS NON-BLOCKING!
+        ssize_t r = read(STDIN_FILENO, &c, sizeof(char));
+        if (r == 1) {
+            if (c == '\n') {
+            } else {
+               putc(c, stdout); 
+            }
+            fflush(stdout);
+        }
 
+        usleep(50000);
+    }
+
+    disable_raw_mode();
+}
+
+int main(int argc, char **argv) {
     sys_init();
     sys_set_sig_exit(false);
 
-    int client_fd = client_connect("127.0.0.1", CHATROOM_PORT);
+    char *username;
+    char *ip;
+
+    if (argc < 2) {
+        log_fatal("Expected Usage `$ client <username> [<ip>]`"); 
+    }
+
+    username = argv[1];
+    ip = argc < 3 ? "127.0.0.1" : argv[2];
+
+    int client_fd = client_connect(ip, CHATROOM_PORT);
 
     if (client_fd == -1) {
         log_fatal("Failed to connect to server");
@@ -199,26 +227,50 @@ int main(void) {
     if (rpc_status != CHRPC_SUCCESS) {
         log_fatal("Failed to set up rpc client");
     }
+    
+    chrpc_value_t *login_ret;
+    chrpc_value_t *username_val = new_chrpc_str_value(username);
+    rpc_status = chrpc_client_send_request_va(client, "login", &login_ret, username_val);
+    delete_chrpc_value(username_val);
 
-    enable_raw_mode();
-
-
-    // Hmmmm, I don't really know tbh...
-
-    // Should I login or something???
-
-    chatroom_mailbox_t *mb = new_chatroom_mailbox();
-
-
-    while (!sys_sig_exit_requested()) {
-
-        // So here, we need to both poll for messages and read input...
-
-        
-        sleep(1);
+    if (rpc_status != CHRPC_SUCCESS) {
+        delete_chrpc_client(client);
+        log_fatal("Failed to complete login request");
     }
 
-    disable_raw_mode();
+    if (login_ret->value->struct_entries[0]->b8) {
+        log_warn("%s", 
+                login_ret->value->struct_entries[1]->str);
+
+        delete_chrpc_client(client);
+        delete_chrpc_value(login_ret);
+
+        log_fatal("Failed to complete login request");
+    }
+
+    // Successful login, let's just delete this return value.
+    delete_chrpc_value(login_ret);
+
+    client_worker_state_t worker_state;
+    safe_pthread_mutex_init(&(worker_state.should_exit_mut), NULL);
+    worker_state.should_exit = false;
+    worker_state.recv_q = new_chatroom_mailbox();
+    worker_state.send_q = new_chatroom_mailbox();
+    worker_state.client = client;
+
+    pthread_t worker_id;
+    safe_pthread_create(&worker_id, NULL, client_worker_routine, &worker_state);
+
+    client_cmd_prompt_routine(worker_state.send_q, worker_state.recv_q);
+
+    safe_pthread_mutex_lock(&(worker_state.should_exit_mut));
+    worker_state.should_exit = true;
+    safe_pthread_mutex_unlock(&(worker_state.should_exit_mut));
+    safe_pthread_join(worker_id, NULL);
+
+    delete_chatroom_mailbox(worker_state.recv_q);
+    delete_chatroom_mailbox(worker_state.send_q);
+    delete_chrpc_client(worker_state.client);
 
     safe_exit(0);
 }
