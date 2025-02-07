@@ -100,6 +100,7 @@ static chrpc_server_command_t chatroom_send_private_msg_ep(channel_id_t id, chat
     string_t *msg = new_string_from_cstr(msg_cstr);
 
     chatroom_status_t status = chatroom_send_private_msg_from_id(cs, receiver_cstr, id, msg);
+    delete_string(msg); // This is not consumed.
 
     if (status == CHATROOM_SUCCESS) {
         *ret = new_chatroom_server_success();

@@ -287,8 +287,8 @@ static chatroom_status_t _chatroom_send_private_msg(chatroom_state_t *cs, const 
     chatroom_mailbox_t *mb = *_mb;
 
     chatroom_mailbox_push(mb, new_chatroom_message(
-        s_copy(sender),
         false,
+        s_copy(sender),
         s_copy(msg)
     ));
 

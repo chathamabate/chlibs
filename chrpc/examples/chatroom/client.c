@@ -13,6 +13,7 @@
 #include "chsys/wrappers.h"
 #include "chutil/string.h"
 
+#include <string.h>
 #include <termios.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -216,6 +217,29 @@ static void client_process_cmd_buffer(chatroom_mailbox_t *send_q, char *buf) {
 #define CLIENT_PROMPT ANSI_BOLD ">" ANSI_RESET
 #define CLIENT_PRINT_PROMPT() printf(ANSI_RESET_LINE CLIENT_PROMPT)
 
+static void client_print_received_msg(chatroom_message_t *msg) {
+    const char *sender_cstr = s_get_cstr(msg->user);
+    const char *msg_cstr = s_get_cstr(msg->msg);
+
+    if (sender_cstr[0] == '$') {
+        if (strcmp(sender_cstr, "$ROOT") == 0) {
+            printf(ANSI_BLUE_FG ANSI_ITALIC "%s" ANSI_RESET, msg_cstr);
+        } else if (strcmp(sender_cstr, "$ERROR") == 0) {
+            printf(ANSI_RED_FG ANSI_ITALIC "%s" ANSI_RESET, msg_cstr);
+        }
+
+        return;
+    }
+
+    // Normal message.
+
+    if (msg->general_msg) {
+        printf(ANSI_BRIGHT_CYAN_FG "%s" ANSI_RESET ANSI_ITALIC " %s" ANSI_RESET, sender_cstr, msg_cstr);
+    } else {
+        printf(ANSI_BRIGHT_MAGENTA_FG "%s" ANSI_RESET ANSI_ITALIC " %s" ANSI_RESET, sender_cstr, msg_cstr);
+    }
+}
+
 static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailbox_t *recv_q) {
     enable_raw_mode();
     set_stdin_non_blocking();
@@ -224,15 +248,16 @@ static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailb
     const size_t cmd_buf_len = sizeof(cmd_buf);
     size_t cmd_buf_i = 0;
 
-    printf("\n>");
+    CLIENT_PRINT_PROMPT();
     fflush(stdout);
 
     while (!sys_sig_exit_requested()) {
         chatroom_message_t *recv_msg;
         if (chatroom_mailbox_poll(recv_q, &recv_msg, 1) != 0) {
             printf(ANSI_RESET_LINE);
-            printf(ANSI_RESET_LINE "%s\n", s_get_cstr(recv_msg->msg));
+            client_print_received_msg(recv_msg);
             delete_chatroom_message(recv_msg);
+            printf("\n");
 
             CLIENT_PRINT_PROMPT();
             fflush(stdout);
