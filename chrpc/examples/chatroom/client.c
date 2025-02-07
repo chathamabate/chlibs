@@ -17,6 +17,18 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <fcntl.h>
+
+static void set_stdin_non_blocking(void) {
+    int stdin_flags = fcntl(STDIN_FILENO, F_GETFL);
+    if (stdin_flags == -1) {
+        log_fatal("Failed to get STDIN Flags");
+    }
+
+    if (fcntl(STDIN_FILENO, F_SETFL, stdin_flags | O_NONBLOCK) == -1) {
+        log_fatal("Failed to set STDIN as non-blocking");
+    }
+}
 
 // Real time terminal stuff I took from ChatGPT TBH.
 struct termios orig_termios;
@@ -141,11 +153,72 @@ static void *client_worker_routine(void *arg) {
     }
 }
 
+// NOTE: This destroys the given buffer!
+static void client_process_cmd_buffer(chatroom_mailbox_t *send_q, char *buf) {
+    if (buf[0] == '\0') {
+        return;
+    }
+
+    // A $ sign signifies a private message.
+    // Try $<receiver> <msg> to send a private message.
+    //
+    // As an oversight, this message will only show up on the receiver's end.
+    // A better chatroom would fix this!
+    if (buf[0] == '$') {
+        char *iter = buf + 1;
+
+        // Go until a space or end of string.
+        while (*iter != ' ' && *iter != '\0') {
+            iter++;
+        }
+
+        // No private message to send, or no receiver was given
+        if (iter == buf + 1 || *iter == '\0') {
+            return;
+        }
+
+        *iter = '\0';
+
+        iter++;
+
+        // No message to send after the space!
+        if (*iter == '\0') {
+            return;
+        }
+        
+        string_t *receiver = new_string_from_cstr(buf + 1);
+        string_t *msg = new_string_from_cstr(iter);
+
+        chatroom_mailbox_push(send_q, new_chatroom_message(
+            false,
+            receiver, 
+            msg
+        )); 
+
+        // Clear buffer before returning.
+        buf[0] = '\0';
+
+        return;
+    } 
+
+    // Otherwise we have a general message!
+
+    chatroom_mailbox_push(send_q, new_chatroom_message(
+        true, 
+        new_string_from_literal(""),
+        new_string_from_cstr(buf)
+    ));
+
+    buf[0] = '\0';
+}
+
 static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailbox_t *recv_q) {
     enable_raw_mode();
+    set_stdin_non_blocking();
     
     char cmd_buf[0x100] = "";
     const size_t cmd_buf_len = sizeof(cmd_buf);
+    size_t cmd_buf_i = 0;
 
     printf("\n>");
     fflush(stdout);
@@ -153,7 +226,7 @@ static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailb
     while (!sys_sig_exit_requested()) {
         chatroom_message_t *recv_msg;
         if (chatroom_mailbox_poll(recv_q, &recv_msg, 1) != 0) {
-            printf("\r%s\n", s_get_cstr(recv_msg->msg));
+            printf("\033[2K\r%s\n", s_get_cstr(recv_msg->msg));
             delete_chatroom_message(recv_msg);
 
             printf(">%s", cmd_buf);
@@ -161,13 +234,16 @@ static void client_cmd_prompt_routine(chatroom_mailbox_t *send_q, chatroom_mailb
         }
 
         char c;
-        // This is blocking!!!!
-        // PLEASE MAKE THIS NON-BLOCKING!
         ssize_t r = read(STDIN_FILENO, &c, sizeof(char));
         if (r == 1) {
             if (c == '\n') {
-            } else {
-               putc(c, stdout); 
+                client_process_cmd_buffer(send_q, cmd_buf);
+                cmd_buf_i = 0;
+                printf("\033[2K\r>");
+            } else if (cmd_buf_i < cmd_buf_len - 1) {
+                cmd_buf[cmd_buf_i++] = c;
+                cmd_buf[cmd_buf_i] = '\0';
+                putc(c, stdout); 
             }
             fflush(stdout);
         }

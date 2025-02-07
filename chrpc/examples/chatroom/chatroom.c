@@ -133,6 +133,18 @@ chatroom_status_t chatroom_login(chatroom_state_t *cs, channel_id_t id, const ch
         return CHATROOM_INVALID_USERNAME;
     }
 
+    for (size_t i = 0; i < username_len; i++) {
+        char c = username[i];
+
+        bool lc = 'a' < c && c < 'z';
+        bool uc = 'A' < c && c < 'Z';
+        bool num = '0' < c && c < '9';
+        
+        if (!(lc || uc || num)) {
+            return CHATROOM_INVALID_USERNAME;
+        }
+    }
+
     chatroom_status_t status;
 
     safe_pthread_rwlock_wrlock(&(cs->global_lock));
