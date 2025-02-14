@@ -15,7 +15,9 @@ static inline header_map_t *new_header_map() {
 
 void delete_header_map(header_map_t *hm);
 
-void header_map_put(const char *k, const char *v);
+void header_map_put(header_map_t *hm, string_t *k, string_t *v);
+string_t *header_map_get(header_map_t *hm, const char *k);
+bool header_map_remove(header_map_t *hm, const char *k);
 
 // NOTE: Right now, we will not support sending chunked responses.
 // We will be able to receive them, but that's it.

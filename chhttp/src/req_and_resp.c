@@ -20,6 +20,32 @@ void delete_header_map(header_map_t *hm) {
     delete_hash_map(hm);
 }
 
+void header_map_put(header_map_t *hm, string_t *k, string_t *v) {
+    string_t **old = hm_get(hm, k); 
+    hm_put(hm, &k, &v);
+
+    if (old) {
+        delete_string(k);
+        delete_string(*old);
+    }
+}
+
+string_t *header_map_get(header_map_t *hm, const char *k) {
+    string_t *ks = new_string_from_literal(k);
+    string_t **val = hm_get(hm, &ks);
+    delete_string(ks);
+
+    return val ? *val : NULL;
+}
+
+bool header_map_remove(header_map_t *hm, const char *k) {
+    string_t *ks = new_string_from_literal(k);
+    bool removed = hm_remove(hm, &ks);
+    delete_string(ks);
+
+    return removed;
+}
+
 const char *http_method_as_literal(http_method_t m) {
     switch (m) {
         case HTTP_GET:
