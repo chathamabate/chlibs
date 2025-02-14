@@ -2,7 +2,7 @@
 LIB_NAME	:= chhttp
 DEPS		:= chsys chutil
 
-_SRCS		:= 
+_SRCS		:= req_and_resp.c
 
 _TEST_SRCS   := main.c 
 
